@@ -78,7 +78,7 @@ class MainContextImpl : public MainContext {
 
   std::unique_ptr<RootWindowManager> root_window_manager_;
 
-#if defined(OS_WIN)
+#if defined(OS_WIN) || defined(OS_MAC)
   bool shared_texture_enabled_;
 #endif
 

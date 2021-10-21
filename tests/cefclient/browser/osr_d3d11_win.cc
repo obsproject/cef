@@ -210,16 +210,14 @@ void Geometry::draw() {
   d3d11_ctx->Draw(vertices_, 0);
 }
 
-Texture2D::Texture2D(ID3D11Texture2D* tex, ID3D11ShaderResourceView* srv)
+Texture2D::Texture2D(ID3D11Texture2D* tex,
+                     ID3D11ShaderResourceView* srv,
+                     void* share_handle,
+                     HANDLE ntHandle)
     : texture_(to_com_ptr(tex)), srv_(to_com_ptr(srv)) {
-  share_handle_ = nullptr;
-
-  IDXGIResource* res = nullptr;
-  if (SUCCEEDED(texture_->QueryInterface(__uuidof(IDXGIResource),
-                                         reinterpret_cast<void**>(&res)))) {
-    res->GetSharedHandle(&share_handle_);
-    res->Release();
-  }
+  share_handle_ = share_handle;
+  if (ntHandle)
+    ntHandle_.reset(ntHandle, &::CloseHandle);
 
   // Are we using a keyed mutex?
   IDXGIKeyedMutex* mutex = nullptr;
@@ -268,16 +266,19 @@ void Texture2D::unlock_key(uint64_t key) {
 void Texture2D::bind(const std::shared_ptr<Context>& ctx) {
   ctx_ = ctx;
   ID3D11DeviceContext* d3d11_ctx = (ID3D11DeviceContext*)(*ctx_);
+  lock_key(1, 5);
   if (srv_) {
     ID3D11ShaderResourceView* views[1] = {srv_.get()};
     d3d11_ctx->PSSetShaderResources(0, 1, views);
   }
 }
 
-void Texture2D::unbind() {}
+void Texture2D::unbind() {
+  unlock_key(0);
+}
 
 void* Texture2D::share_handle() const {
-  return share_handle_;
+  return (void*)share_handle_;
 }
 
 void Texture2D::copy_from(const std::shared_ptr<Texture2D>& other) {
@@ -571,10 +572,22 @@ std::shared_ptr<Geometry> Device::create_quad(float x,
 }
 
 std::shared_ptr<Texture2D> Device::open_shared_texture(void* handle) {
+  HANDLE ntHandle;
+  auto res =
+      DuplicateHandle(GetCurrentProcess(), (HANDLE)handle, GetCurrentProcess(),
+                      &ntHandle, 0, FALSE, DUPLICATE_SAME_ACCESS);
+  if (!res) {
+    LOG(ERROR) << "Unable to duplicate handle";
+    return nullptr;
+  }
+
+  ID3D11Device1* dev1 = nullptr;
+  device_->QueryInterface(__uuidof(ID3D11Device1),
+                          reinterpret_cast<void**>(&dev1));
   ID3D11Texture2D* tex = nullptr;
-  auto hr = device_->OpenSharedResource(handle, __uuidof(ID3D11Texture2D),
-                                        (void**)(&tex));
+  auto hr = dev1->OpenSharedResource1(handle, IID_PPV_ARGS(&tex));
   if (FAILED(hr)) {
+    CloseHandle(ntHandle);
     return nullptr;
   }
 
@@ -593,11 +606,12 @@ std::shared_ptr<Texture2D> Device::open_shared_texture(void* handle) {
     hr = device_->CreateShaderResourceView(tex, &srv_desc, &srv);
     if (FAILED(hr)) {
       tex->Release();
+      CloseHandle(ntHandle);
       return nullptr;
     }
   }
 
-  return std::make_shared<Texture2D>(tex, srv);
+  return std::make_shared<Texture2D>(tex, srv, handle, ntHandle);
 }
 
 std::shared_ptr<Texture2D> Device::create_texture(int width,
@@ -642,7 +656,7 @@ std::shared_ptr<Texture2D> Device::create_texture(int width,
     return nullptr;
   }
 
-  return std::make_shared<Texture2D>(tex, srv);
+  return std::make_shared<Texture2D>(tex, srv, nullptr, nullptr);
 }
 
 std::shared_ptr<ID3DBlob> Device::compile_shader(const std::string& source_code,
@@ -916,17 +930,13 @@ FrameBuffer::FrameBuffer(const std::shared_ptr<Device>& device)
     : device_(device) {}
 
 void FrameBuffer::on_paint(void* shared_handle) {
-  // Did the shared texture change?
-  if (shared_buffer_ && shared_handle != shared_buffer_->share_handle()) {
-    shared_buffer_.reset();
-  }
+  // New shared texture every call
+  shared_buffer_.reset();
 
   // Open the shared texture.
+  shared_buffer_ = device_->open_shared_texture((void*)shared_handle);
   if (!shared_buffer_) {
-    shared_buffer_ = device_->open_shared_texture((void*)shared_handle);
-    if (!shared_buffer_) {
-      LOG(ERROR) << "d3d11: Could not open shared texture!";
-    }
+    LOG(ERROR) << "d3d11: Could not open shared texture!";
   }
 }
 
