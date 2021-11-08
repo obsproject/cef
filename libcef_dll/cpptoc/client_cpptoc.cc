@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=69e482e4a20c97d54dc21f892f9e70e3d5d80f47$
+// $hash=7e7c3a964eb7e47d23a82f03cf183a9b6e8b5f06$
 //
 
 #include "libcef_dll/cpptoc/client_cpptoc.h"
@@ -26,6 +26,7 @@
 #include "libcef_dll/cpptoc/keyboard_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/life_span_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/load_handler_cpptoc.h"
+#include "libcef_dll/cpptoc/media_access_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/print_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/render_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/request_handler_cpptoc.h"
@@ -179,6 +180,22 @@ client_get_frame_handler(struct _cef_client_t* self) {
 
   // Return type: refptr_same
   return CefFrameHandlerCppToC::Wrap(_retval);
+}
+
+struct _cef_media_access_handler_t* CEF_CALLBACK
+client_get_media_access_handler(struct _cef_client_t* self) {
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  DCHECK(self);
+  if (!self)
+    return NULL;
+
+  // Execute
+  CefRefPtr<CefMediaAccessHandler> _retval =
+      CefClientCppToC::Get(self)->GetMediaAccessHandler();
+
+  // Return type: refptr_same
+  return CefMediaAccessHandlerCppToC::Wrap(_retval);
 }
 
 struct _cef_jsdialog_handler_t* CEF_CALLBACK
@@ -340,6 +357,7 @@ CefClientCppToC::CefClientCppToC() {
   GetStruct()->get_find_handler = client_get_find_handler;
   GetStruct()->get_focus_handler = client_get_focus_handler;
   GetStruct()->get_frame_handler = client_get_frame_handler;
+  GetStruct()->get_media_access_handler = client_get_media_access_handler;
   GetStruct()->get_jsdialog_handler = client_get_jsdialog_handler;
   GetStruct()->get_keyboard_handler = client_get_keyboard_handler;
   GetStruct()->get_life_span_handler = client_get_life_span_handler;

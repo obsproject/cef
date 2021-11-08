@@ -474,6 +474,7 @@
       'tests/ceftests/image_util.h',
       'tests/ceftests/jsdialog_unittest.cc',
       'tests/ceftests/life_span_unittest.cc',
+      'tests/ceftests/media_access_unittest.cc',
       'tests/ceftests/message_router_unittest.cc',
       'tests/ceftests/navigation_unittest.cc',
       'tests/ceftests/os_rendering_unittest.cc',

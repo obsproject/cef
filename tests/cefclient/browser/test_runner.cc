@@ -29,10 +29,13 @@
 #include "tests/cefclient/browser/server_test.h"
 #include "tests/cefclient/browser/urlrequest_test.h"
 #include "tests/cefclient/browser/window_test.h"
+#include "tests/cefclient/browser/resource.h"
 #include "tests/shared/browser/resource_util.h"
 
 namespace client {
 namespace test_runner {
+	
+bool AllowWebcam = false;
 
 namespace {
 
@@ -629,6 +632,12 @@ void RunTest(CefRefPtr<CefBrowser> browser, int id) {
       break;
     case ID_TESTS_UNMUTE_AUDIO:
       MuteAudio(browser, false);
+      break;
+    case ID_TESTS_BLOCK_WEBCAM:
+      test_runner::AllowWebcam = false;
+      break;
+    case ID_TESTS_ALLOW_WEBCAM:
+      test_runner::AllowWebcam = true;
       break;
     case ID_TESTS_OTHER_TESTS:
       RunOtherTests(browser);

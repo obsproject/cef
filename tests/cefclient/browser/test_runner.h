@@ -16,6 +16,8 @@
 
 namespace client {
 namespace test_runner {
+	
+extern bool AllowWebcam;
 
 // Run a test.
 void RunTest(CefRefPtr<CefBrowser> browser, int id);

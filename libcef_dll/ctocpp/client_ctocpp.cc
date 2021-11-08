@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=9997fe1021600e4056a440521ead6e50354d08d6$
+// $hash=4d37579e014cbbd45e570b373f2e52f7604d5753$
 //
 
 #include "libcef_dll/ctocpp/client_ctocpp.h"
@@ -29,6 +29,7 @@
 #include "libcef_dll/ctocpp/keyboard_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/life_span_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/load_handler_ctocpp.h"
+#include "libcef_dll/ctocpp/media_access_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/print_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/render_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/request_handler_ctocpp.h"
@@ -169,6 +170,22 @@ CefRefPtr<CefFrameHandler> CefClientCToCpp::GetFrameHandler() {
 
   // Return type: refptr_same
   return CefFrameHandlerCToCpp::Wrap(_retval);
+}
+
+NO_SANITIZE("cfi-icall")
+CefRefPtr<CefMediaAccessHandler> CefClientCToCpp::GetMediaAccessHandler() {
+  cef_client_t* _struct = GetStruct();
+  if (CEF_MEMBER_MISSING(_struct, get_media_access_handler))
+    return nullptr;
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  // Execute
+  cef_media_access_handler_t* _retval =
+      _struct->get_media_access_handler(_struct);
+
+  // Return type: refptr_same
+  return CefMediaAccessHandlerCToCpp::Wrap(_retval);
 }
 
 NO_SANITIZE("cfi-icall")
