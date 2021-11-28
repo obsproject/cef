@@ -1911,6 +1911,7 @@ if (is_mac) {
     frameworks = [
       "AppKit.framework",
       "OpenGL.framework",
+      "IOSurface.framework",
     ]
     defines = [
       "CEF_USE_SANDBOX",
