@@ -75,8 +75,8 @@ MainContextImpl::MainContextImpl(CefRefPtr<CefCommandLine> command_line,
       use_windowless_rendering_ &&
       command_line_->HasSwitch(switches::kTransparentPaintingEnabled);
 
-#if defined(OS_WIN)
-  // Shared texture is only supported on Windows.
+#if (defined(OS_WIN) && !defined(ARCH_CPU_ARM_FAMILY)) || defined(OS_MAC)
+  // Shared texture is only supported on Windows (non arm) and macOS.
   shared_texture_enabled_ =
       use_windowless_rendering_ &&
       command_line_->HasSwitch(switches::kSharedTextureEnabled);
@@ -212,7 +212,7 @@ void MainContextImpl::PopulateOsrSettings(OsrRendererSettings* settings) {
   settings->show_update_rect =
       command_line_->HasSwitch(switches::kShowUpdateRect);
 
-#if defined(OS_WIN)
+#if (defined(OS_WIN) && !defined(ARCH_CPU_ARM_FAMILY)) || defined(OS_MAC)
   settings->shared_texture_enabled = shared_texture_enabled_;
 #endif
   settings->external_begin_frame_enabled = external_begin_frame_enabled_;

@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "cef/libcef/browser/osr/external_renderer_updater.mojom.h"
 #include "libcef/browser/osr/render_widget_host_view_osr.h"
 
 #include "base/memory/shared_memory_mapping.h"
@@ -22,6 +23,49 @@
 #if defined(OS_WIN)
 #include "skia/ext/skia_utils_win.h"
 #endif
+
+class CefExternalRendererUpdaterOSR
+    : public viz::mojom::ExternalRendererUpdater {
+ public:
+  CefExternalRendererUpdaterOSR(
+      CefRenderWidgetHostViewOSR* const view,
+      mojo::PendingReceiver<viz::mojom::ExternalRendererUpdater> receiver);
+  ~CefExternalRendererUpdaterOSR() override;
+
+  // viz::mojom::ExternalRendererUpdater implementation.
+  void OnAfterFlip(gfx::GpuMemoryBufferHandle handle,
+                   const gfx::Rect& damage_rect,
+                   OnAfterFlipCallback callback) override;
+
+ private:
+  CefRenderWidgetHostViewOSR* const view_;
+  mojo::Receiver<viz::mojom::ExternalRendererUpdater> receiver_;
+
+  DISALLOW_COPY_AND_ASSIGN(CefExternalRendererUpdaterOSR);
+};
+
+CefExternalRendererUpdaterOSR::CefExternalRendererUpdaterOSR(
+    CefRenderWidgetHostViewOSR* const view,
+    mojo::PendingReceiver<viz::mojom::ExternalRendererUpdater> receiver)
+    : view_(view), receiver_(this, std::move(receiver)) {}
+
+CefExternalRendererUpdaterOSR::~CefExternalRendererUpdaterOSR() = default;
+
+void CefExternalRendererUpdaterOSR::OnAfterFlip(
+    gfx::GpuMemoryBufferHandle handle,
+    const gfx::Rect& damage_rect,
+    OnAfterFlipCallback callback) {
+#if defined (OS_WIN) && !defined(ARCH_CPU_ARM_FAMILY)
+  HANDLE nthandle = handle.dxgi_handle.Get();
+  view_->OnAcceleratedPaint(damage_rect, nthandle);
+#elif defined(OS_MAC)
+  view_->OnAcceleratedPaint(damage_rect,
+                            (void*)(uintptr_t)(handle.io_surface.get()));
+#else
+  view_->OnAcceleratedPaint(damage_rect, nullptr);
+#endif
+  std::move(callback).Run();
+}
 
 class CefLayeredWindowUpdaterOSR : public viz::mojom::LayeredWindowUpdater {
  public:
@@ -99,8 +143,11 @@ void CefLayeredWindowUpdaterOSR::Draw(const gfx::Rect& damage_rect,
 
 CefHostDisplayClientOSR::CefHostDisplayClientOSR(
     CefRenderWidgetHostViewOSR* const view,
-    gfx::AcceleratedWidget widget)
-    : viz::HostDisplayClient(widget), view_(view) {}
+    gfx::AcceleratedWidget widget,
+    bool use_proxy_output)
+    : viz::HostDisplayClient(widget),
+      view_(view),
+      use_proxy_output_(use_proxy_output) {}
 
 CefHostDisplayClientOSR::~CefHostDisplayClientOSR() {}
 
@@ -123,7 +170,7 @@ gfx::Size CefHostDisplayClientOSR::GetPixelSize() const {
 
 void CefHostDisplayClientOSR::UseProxyOutputDevice(
     UseProxyOutputDeviceCallback callback) {
-  std::move(callback).Run(true);
+  std::move(callback).Run(use_proxy_output_);
 }
 
 void CefHostDisplayClientOSR::CreateLayeredWindowUpdater(
@@ -131,6 +178,12 @@ void CefHostDisplayClientOSR::CreateLayeredWindowUpdater(
   layered_window_updater_ =
       std::make_unique<CefLayeredWindowUpdaterOSR>(view_, std::move(receiver));
   layered_window_updater_->SetActive(active_);
+}
+
+void CefHostDisplayClientOSR::CreateExternalRendererUpdater(
+    mojo::PendingReceiver<viz::mojom::ExternalRendererUpdater> receiver) {
+  external_renderer_updater_ = std::make_unique<CefExternalRendererUpdaterOSR>(
+      view_, std::move(receiver));
 }
 
 #if defined(OS_LINUX)

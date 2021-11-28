@@ -7,7 +7,12 @@
 #if defined(OS_WIN)
 #include <gl/gl.h>
 #elif defined(OS_MAC)
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurface.h>
+#include <OpenGL/CGLIOSurface.h>
+#include <OpenGL/OpenGL.h>
 #include <OpenGL/gl.h>
+#include <OpenGL/glext.h>
 #elif defined(OS_LINUX)
 #include <GL/gl.h>
 #else
@@ -44,10 +49,18 @@ OsrRenderer::OsrRenderer(const OsrRendererSettings& settings)
     : settings_(settings),
       initialized_(false),
       texture_id_(0),
+      popup_texture_id_(0),
+      texture_type_(GL_TEXTURE_2D),
       view_width_(0),
       view_height_(0),
       spin_x_(0),
-      spin_y_(0) {}
+      spin_y_(0),
+      flipped_(false) {
+#ifdef OS_MAC
+  texture_type_ = GL_TEXTURE_RECTANGLE_ARB;
+#endif
+  ClearPopupRects();
+}
 
 OsrRenderer::~OsrRenderer() {
   Cleanup();
@@ -81,11 +94,26 @@ void OsrRenderer::Initialize() {
   DCHECK_NE(texture_id_, 0U);
   VERIFY_NO_ERROR;
 
-  glBindTexture(GL_TEXTURE_2D, texture_id_);
+  glBindTexture(texture_type_, texture_id_);
   VERIFY_NO_ERROR;
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(texture_type_, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   VERIFY_NO_ERROR;
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(texture_type_, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  VERIFY_NO_ERROR;
+  glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+  VERIFY_NO_ERROR;
+
+  // Create the popup texture.
+  glGenTextures(1, &popup_texture_id_);
+  VERIFY_NO_ERROR;
+  DCHECK_NE(popup_texture_id_, 0U);
+  VERIFY_NO_ERROR;
+
+  glBindTexture(texture_type_, popup_texture_id_);
+  VERIFY_NO_ERROR;
+  glTexParameteri(texture_type_, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  VERIFY_NO_ERROR;
+  glTexParameteri(texture_type_, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   VERIFY_NO_ERROR;
   glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
   VERIFY_NO_ERROR;
@@ -104,13 +132,26 @@ void OsrRenderer::Render() {
 
   DCHECK(initialized_);
 
+  float texW, texH;
+  if (texture_type_ == GL_TEXTURE_2D) {
+    texW = 1.0f;
+    texH = 1.0f;
+  } else {
+    texW = view_width_;
+    texH = view_height_;
+  }
+
   struct {
     float tu, tv;
     float x, y, z;
-  } static vertices[] = {{0.0f, 1.0f, -1.0f, -1.0f, 0.0f},
-                         {1.0f, 1.0f, 1.0f, -1.0f, 0.0f},
-                         {1.0f, 0.0f, 1.0f, 1.0f, 0.0f},
-                         {0.0f, 0.0f, -1.0f, 1.0f, 0.0f}};
+  } vertices[] = {{0.0f, texH, -1.0f, -1.0f, 0.0f},
+                  {texW, texH, 1.0f, -1.0f, 0.0f},
+                  {texW, 0.0f, 1.0f, 1.0f, 0.0f},
+                  {0.0f, 0.0f, -1.0f, 1.0f, 0.0f}};
+  if (flipped_) {
+    vertices[0].tv = vertices[1].tv = 0.0f;
+    vertices[2].tv = vertices[3].tv = texH;
+  }
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   VERIFY_NO_ERROR;
@@ -165,21 +206,59 @@ void OsrRenderer::Render() {
   }
 
   // Enable 2D textures.
-  glEnable(GL_TEXTURE_2D);
+  glEnable(texture_type_);
   VERIFY_NO_ERROR;
 
   // Draw the facets with the texture.
   DCHECK_NE(texture_id_, 0U);
   VERIFY_NO_ERROR;
-  glBindTexture(GL_TEXTURE_2D, texture_id_);
+  glBindTexture(texture_type_, texture_id_);
   VERIFY_NO_ERROR;
   glInterleavedArrays(GL_T2F_V3F, 0, vertices);
   VERIFY_NO_ERROR;
   glDrawArrays(GL_QUADS, 0, 4);
   VERIFY_NO_ERROR;
 
+  if (popup_tex_rect_.width > 0 && popup_tex_rect_.height > 0 &&
+      popup_rect_.width > 0 && popup_rect_.height > 0 &&
+      popup_texture_id_ > 0) {
+    if (texture_type_ == GL_TEXTURE_2D) {
+      texW = 1.0f;
+      texH = 1.0f;
+    } else {
+      texW = popup_tex_rect_.width;
+      texH = popup_tex_rect_.height;
+    }
+
+    float x = (float)popup_rect_.x / view_width_ * 2.0f - 1.0f;
+    float y = 1.0f - (float)popup_rect_.y / view_height_ * 2.0f;
+    float w =
+        (float)(popup_rect_.x + popup_rect_.width) / view_width_ * 2.0f - 1.0f;
+    float h = 1.0f -
+              (float)(popup_rect_.y + popup_rect_.height) / view_height_ * 2.0f;
+
+    struct {
+      float tu, tv;
+      float x, y, z;
+    } popup_vertices[] = {{0.0f, texH, x, y, 0.0f},
+                          {texW, texH, w, y, 0.0f},
+                          {texW, 0.0f, w, h, 0.0f},
+                          {0.0f, 0.0f, x, h, 0.0f}};
+    if (flipped_) {
+      vertices[0].tv = vertices[1].tv = 0.0f;
+      vertices[2].tv = vertices[3].tv = texH;
+    }
+
+    glBindTexture(texture_type_, popup_texture_id_);
+    VERIFY_NO_ERROR;
+    glInterleavedArrays(GL_T2F_V3F, 0, popup_vertices);
+    VERIFY_NO_ERROR;
+    glDrawArrays(GL_QUADS, 0, 4);
+    VERIFY_NO_ERROR;
+  }
+
   // Disable 2D textures.
-  glDisable(GL_TEXTURE_2D);
+  glDisable(texture_type_);
   VERIFY_NO_ERROR;
 
   if (IsTransparent()) {
@@ -275,7 +354,9 @@ CefRect OsrRenderer::GetPopupRectInWebView(const CefRect& original_rect) {
 void OsrRenderer::ClearPopupRects() {
   popup_rect_.Set(0, 0, 0, 0);
   original_popup_rect_.Set(0, 0, 0, 0);
+  popup_tex_rect_.Set(0, 0, 0, 0);
 }
+
 
 void OsrRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
                           CefRenderHandler::PaintElementType type,
@@ -293,11 +374,11 @@ void OsrRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
   }
 
   // Enable 2D textures.
-  glEnable(GL_TEXTURE_2D);
+  glEnable(texture_type_);
   VERIFY_NO_ERROR;
 
   DCHECK_NE(texture_id_, 0U);
-  glBindTexture(GL_TEXTURE_2D, texture_id_);
+  glBindTexture(texture_type_, texture_id_);
   VERIFY_NO_ERROR;
 
   if (type == PET_VIEW) {
@@ -306,6 +387,7 @@ void OsrRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
 
     view_width_ = width;
     view_height_ = height;
+    flipped_ = false;
 
     if (settings_.show_update_rect)
       update_rect_ = dirtyRects[0];
@@ -321,7 +403,7 @@ void OsrRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
       VERIFY_NO_ERROR;
       glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
       VERIFY_NO_ERROR;
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, view_width_, view_height_, 0,
+      glTexImage2D(texture_type_, 0, GL_RGBA, view_width_, view_height_, 0,
                    GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, buffer);
       VERIFY_NO_ERROR;
     } else {
@@ -335,7 +417,7 @@ void OsrRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
         VERIFY_NO_ERROR;
         glPixelStorei(GL_UNPACK_SKIP_ROWS, rect.y);
         VERIFY_NO_ERROR;
-        glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x, rect.y, rect.width,
+        glTexSubImage2D(texture_type_, 0, rect.x, rect.y, rect.width,
                         rect.height, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV,
                         buffer);
         VERIFY_NO_ERROR;
@@ -369,13 +451,13 @@ void OsrRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
     VERIFY_NO_ERROR;
     glPixelStorei(GL_UNPACK_SKIP_ROWS, skip_rows);
     VERIFY_NO_ERROR;
-    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_BGRA,
+    glTexSubImage2D(texture_type_, 0, x, y, w, h, GL_BGRA,
                     GL_UNSIGNED_INT_8_8_8_8_REV, buffer);
     VERIFY_NO_ERROR;
   }
 
   // Disable 2D textures.
-  glDisable(GL_TEXTURE_2D);
+  glDisable(texture_type_);
   VERIFY_NO_ERROR;
 
   if (IsTransparent()) {
@@ -383,6 +465,75 @@ void OsrRenderer::OnPaint(CefRefPtr<CefBrowser> browser,
     glDisable(GL_BLEND);
     VERIFY_NO_ERROR;
   }
+}
+
+void OsrRenderer::OnAcceleratedPaint(
+    CefRefPtr<CefBrowser> browser,
+    CefRenderHandler::PaintElementType type,
+    const CefRenderHandler::RectList& dirtyRects,
+    void* shared_handle) {
+#ifdef OS_MAC
+  if (!initialized_)
+    Initialize();
+
+  if (IsTransparent()) {
+    // Enable alpha blending.
+    glEnable(GL_BLEND);
+    VERIFY_NO_ERROR;
+  }
+
+  IOSurfaceRef last_handle_ = (IOSurfaceRef)(uintptr_t)shared_handle;
+
+  CFRetain(last_handle_);
+  IOSurfaceIncrementUseCount(last_handle_);
+
+  CGLContextObj cgl_context = CGLGetCurrentContext();
+
+  GLsizei surfw = IOSurfaceGetWidth(last_handle_);
+  GLsizei surfh = IOSurfaceGetHeight(last_handle_);
+  GLuint tex;
+
+  if (type == PET_VIEW) {
+    view_width_ = surfw;
+    view_height_ = surfh;
+    flipped_ = true;
+    tex = texture_id_;
+  } else {
+    popup_tex_rect_.x = popup_tex_rect_.y = 0;
+    popup_tex_rect_.width = surfw;
+    popup_tex_rect_.height = surfh;
+    tex = popup_texture_id_;
+  }
+
+  // Enable textures.
+  glEnable(texture_type_);
+  VERIFY_NO_ERROR;
+
+  DCHECK_NE(tex, 0U);
+  glBindTexture(texture_type_, tex);
+  VERIFY_NO_ERROR;
+
+  CGLError cgl_error = CGLTexImageIOSurface2D(
+      cgl_context, texture_type_, GL_RGBA, surfw, surfh, GL_BGRA,
+      GL_UNSIGNED_INT_8_8_8_8_REV, last_handle_, 0);
+  if (cgl_error != kCGLNoError) {
+    LOG(WARNING) << "CGLTexImageIOSurface2D: " << cgl_error;
+  }
+  glBindTexture(texture_type_, 0);
+
+  IOSurfaceDecrementUseCount(last_handle_);
+  CFRelease(last_handle_);
+
+  // Disable 2D textures.
+  glDisable(texture_type_);
+  VERIFY_NO_ERROR;
+
+  if (IsTransparent()) {
+    // Disable alpha blending.
+    glDisable(GL_BLEND);
+    VERIFY_NO_ERROR;
+  }
+#endif
 }
 
 void OsrRenderer::SetSpin(float spinX, float spinY) {

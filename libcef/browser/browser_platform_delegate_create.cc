@@ -60,7 +60,7 @@ std::unique_ptr<CefBrowserPlatformDelegateOsr> CreateOSRDelegate(
       std::move(native_delegate), use_shared_texture, use_external_begin_frame);
 #elif defined(OS_MAC)
   return std::make_unique<CefBrowserPlatformDelegateOsrMac>(
-      std::move(native_delegate));
+      std::move(native_delegate), use_shared_texture, use_external_begin_frame);
 #elif defined(OS_LINUX)
   return std::make_unique<CefBrowserPlatformDelegateOsrLinux>(
       std::move(native_delegate), use_external_begin_frame);
