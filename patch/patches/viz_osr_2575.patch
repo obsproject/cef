@@ -228,6 +228,73 @@ index 0e3af0f9280abe8560393325b400ad2543ed0556..8a1e93995b316a7d4ed5ec8cf3b52a4e
    root_params->display_client =
        compositor_data.display_client->GetBoundRemote(resize_task_runner_);
  
+diff --git gpu/ipc/common/dxgi_helpers.cc gpu/ipc/common/dxgi_helpers.cc
+index 811fb1e995ccbb45bfc5c4976d20a6d202cdc66f..e142cb1d2f003b78360d1138e8a31ac91cbb654c 100644
+--- gpu/ipc/common/dxgi_helpers.cc
++++ gpu/ipc/common/dxgi_helpers.cc
+@@ -118,23 +118,6 @@ bool CopyDXGIBufferToShMem(
+   Microsoft::WRL::ComPtr<ID3D11DeviceContext> device_context;
+   d3d11_device->GetImmediateContext(&device_context);
+ 
+-  Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_mutex;
+-  hr = texture.As(&keyed_mutex);
+-
+-  if (FAILED(hr)) {
+-    DLOG(ERROR) << "Failed to get keyed mutex. hr=" << std::hex << hr;
+-    return false;
+-  }
+-
+-  // Key equal to 0 is also used by the producer. Therefore, this keyed mutex
+-  // acts purely as a regular mutex.
+-  hr = keyed_mutex->AcquireSync(0, INFINITE);
+-  if (FAILED(hr)) {
+-    DLOG(ERROR) << "Failed to acquire keyed mutex. hr=" << std::hex << hr;
+-    return false;
+-  }
+-  DXGIScopedReleaseKeyedMutex release_keyed_mutex(keyed_mutex, 0);
+-
+   device_context->CopySubresourceRegion(staging_texture->Get(), 0, 0, 0, 0,
+                                         texture.Get(), 0, nullptr);
+ 
+diff --git gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc
+index 12f546291af33f1402e4932d7ff9a9ff8f4ccc38..eb88dfdbba48ec371d478c1c735646d143c05c64 100644
+--- gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc
++++ gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc
+@@ -68,7 +68,7 @@ base::OnceClosure GpuMemoryBufferImplDXGI::AllocateForTesting(
+       D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+       0,
+       D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-          D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX};
++          D3D11_RESOURCE_MISC_SHARED};
+ 
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
+ 
+diff --git gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
+index af8364900c81458a4be54331502dd299d20916e2..c4c26c1e37f815233e6f8c56bd2ef7719426b6d2 100644
+--- gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
++++ gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
+@@ -130,7 +130,7 @@ gfx::GpuMemoryBufferHandle GpuMemoryBufferFactoryDXGI::CreateGpuMemoryBuffer(
+       D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+       0,
+       D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-          D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX};
++          D3D11_RESOURCE_MISC_SHARED};
+ 
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
+ 
+diff --git media/capture/video/win/gpu_memory_buffer_tracker.cc media/capture/video/win/gpu_memory_buffer_tracker.cc
+index 91ac2af43e9cdd7f09f5d61a56894e91408e713b..4e92d302235e5d68b5e17fc7b80313324469cd57 100644
+--- media/capture/video/win/gpu_memory_buffer_tracker.cc
++++ media/capture/video/win/gpu_memory_buffer_tracker.cc
+@@ -35,7 +35,7 @@ base::win::ScopedHandle CreateNV12Texture(ID3D11Device* d3d11_device,
+       .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+       .CPUAccessFlags = 0,
+       .MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-                   D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX};
++                   D3D11_RESOURCE_MISC_SHARED};
+ 
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
+ 
 diff --git mojo/public/cpp/bindings/sync_call_restrictions.h mojo/public/cpp/bindings/sync_call_restrictions.h
 index e7e67ee824b2a87eb14b45a3f2d76d471ff864fb..bb044cff83f584ac0a61db0e844ef5dea474b67a 100644
 --- mojo/public/cpp/bindings/sync_call_restrictions.h
@@ -353,18 +420,120 @@ index 2f6d2ee4160f24cb01ae0ce36e07f1ddcc5025df..f7d8dd233e580047fb4cc0052a7c3e59
    // The root of the Layer tree drawn by this compositor.
    raw_ptr<Layer> root_layer_ = nullptr;
  
+diff --git ui/gl/direct_composition_surface_win_unittest.cc ui/gl/direct_composition_surface_win_unittest.cc
+index 67ede44cc15f42ca7e337f60b1adfbede7d15f81..741c3dd30425f08b00344aef8c645828c962c089 100644
+--- ui/gl/direct_composition_surface_win_unittest.cc
++++ ui/gl/direct_composition_surface_win_unittest.cc
+@@ -95,7 +95,7 @@ Microsoft::WRL::ComPtr<ID3D11Texture2D> CreateNV12Texture(
+   desc.SampleDesc.Count = 1;
+   desc.BindFlags = 0;
+   if (shared) {
+-    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX |
++    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED |
+                      D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+   }
+ 
 diff --git ui/gl/gl_image_dxgi.cc ui/gl/gl_image_dxgi.cc
-index 15c1166be9978ca040f35617f40dbbf81d50c164..d7c6ded6534f9038144d8636c81031fc2c6b4eca 100644
+index 15c1166be9978ca040f35617f40dbbf81d50c164..9019fe94f171359216aacad595ece0df48c03700 100644
 --- ui/gl/gl_image_dxgi.cc
 +++ ui/gl/gl_image_dxgi.cc
-@@ -166,8 +166,8 @@ bool GLImageDXGI::BindTexImage(unsigned target) {
+@@ -23,10 +23,6 @@
+ namespace gl {
+ 
+ namespace {
+-// Keys used to acquire and release the keyed mutex.  Will need to be kept in
+-// sync with any other code that reads from or draws to the same DXGI handle.
+-const static UINT64 KEY_BIND = 0;
+-const static UINT64 KEY_RELEASE = 1;
+ 
+ bool SupportedBindFormat(gfx::BufferFormat format) {
+   switch (format) {
+@@ -152,7 +148,6 @@ bool GLImageDXGI::BindTexImage(unsigned target) {
+     return true;
+ 
+   DCHECK(texture_);
+-  DCHECK(keyed_mutex_);
+   if (!SupportedBindFormat(buffer_format_))
+     return false;
+ 
+@@ -166,14 +161,6 @@ bool GLImageDXGI::BindTexImage(unsigned target) {
        return false;
    }
  
 -  // We don't wait, just return immediately.
 -  HRESULT hrWait = keyed_mutex_->AcquireSync(KEY_BIND, 0);
-+  // Wait infinitely
-+  HRESULT hrWait = keyed_mutex_->AcquireSync(KEY_BIND, INFINITE);
+-
+-  if (hrWait == WAIT_TIMEOUT || hrWait == WAIT_ABANDONED || FAILED(hrWait)) {
+-    NOTREACHED();
+-    return false;
+-  }
+-
+   return eglBindTexImage(
+              gl::GLSurfaceEGL::GetGLDisplayEGL()->GetHardwareDisplay(),
+              surface_, EGL_BACK_BUFFER) == EGL_TRUE;
+@@ -220,9 +207,6 @@ void GLImageDXGI::ReleaseTexImage(unsigned target) {
+     return;
  
-   if (hrWait == WAIT_TIMEOUT || hrWait == WAIT_ABANDONED || FAILED(hrWait)) {
-     NOTREACHED();
+   DCHECK(texture_);
+-  DCHECK(keyed_mutex_);
+-
+-  keyed_mutex_->ReleaseSync(KEY_RELEASE);
+ 
+   eglReleaseTexImage(gl::GLSurfaceEGL::GetGLDisplayEGL()->GetHardwareDisplay(),
+                      surface_, EGL_BACK_BUFFER);
+@@ -250,8 +234,6 @@ bool GLImageDXGI::InitializeHandle(base::win::ScopedHandle handle,
+   texture_->GetDesc(&desc);
+   if (desc.ArraySize <= level_)
+     return false;
+-  if (FAILED(texture_.As(&keyed_mutex_)))
+-    return false;
+ 
+   handle_ = std::move(handle);
+   return true;
+diff --git ui/gl/gl_image_dxgi.h ui/gl/gl_image_dxgi.h
+index 1facae06e891c5766b56168da3a9d2cbe0c932f1..c2e8970c5eb1a995c24d69cc37db517876a002dd 100644
+--- ui/gl/gl_image_dxgi.h
++++ ui/gl/gl_image_dxgi.h
+@@ -44,7 +44,6 @@ class GL_EXPORT GLImageDXGI : public GLImage {
+   void ReleaseTexImage(unsigned target) override;
+ 
+   const gfx::ColorSpace& color_space() const { return color_space_; }
+-  Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_mutex() { return keyed_mutex_; }
+   size_t level() const { return level_; }
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> texture() { return texture_; }
+ 
+@@ -59,7 +58,6 @@ class GL_EXPORT GLImageDXGI : public GLImage {
+ 
+   gfx::BufferFormat buffer_format_ = gfx::BufferFormat::BGRA_8888;
+   base::win::ScopedHandle handle_;
+-  Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_mutex_;
+   size_t level_ = 0;
+   gfx::Size size_;
+   EGLSurface surface_ = nullptr;
+diff --git ui/gl/gl_image_dxgi_unittest.cc ui/gl/gl_image_dxgi_unittest.cc
+index 4499b93fda22ec21a2831c5ce051bfe6bb0772d2..f388966098b4469ead62d98d755f172e1c303241 100644
+--- ui/gl/gl_image_dxgi_unittest.cc
++++ ui/gl/gl_image_dxgi_unittest.cc
+@@ -36,7 +36,7 @@ class GLImageDXGITestDelegate : public GLImageTestDelegateBase {
+     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+     desc.CPUAccessFlags = 0;
+     desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-                     D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
++                     D3D11_RESOURCE_MISC_SHARED;
+ 
+     std::vector<unsigned char> originalData(size.width() * size.height() * 4);
+     for (int x = 0; x < size.width(); ++x) {
+diff --git ui/gl/swap_chain_presenter.cc ui/gl/swap_chain_presenter.cc
+index 049fa2a2f56693829d0df0b9dc23084e0d2a002d..b2ca50203b01118456c5776e99db2a0fe7c550ad 100644
+--- ui/gl/swap_chain_presenter.cc
++++ ui/gl/swap_chain_presenter.cc
+@@ -989,8 +989,7 @@ bool SwapChainPresenter::PresentToSwapChain(ui::DCRendererLayerParams& params) {
+   if (image_dxgi) {
+     input_texture = image_dxgi->texture();
+     input_level = image_dxgi->level();
+-    // Keyed mutex may not exist.
+-    keyed_mutex = image_dxgi->keyed_mutex();
++    // Keyed mutex does not exist. lol
+     input_color_space = image_dxgi->color_space();
+   } else if (image_d3d) {
+     input_texture = image_d3d->texture();
