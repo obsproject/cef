@@ -13,7 +13,6 @@ index ab01b1d664ec5..81dad3709d30d 100644
        base::FEATURE_ENABLED_BY_DEFAULT
  #else
        base::FEATURE_DISABLED_BY_DEFAULT
-
 diff --git components/viz/host/host_display_client.cc components/viz/host/host_display_client.cc
 index 3b00759e513dc..1ea7a9cf5d19c 100644
 --- components/viz/host/host_display_client.cc
@@ -49,7 +48,7 @@ index 3b00759e513dc..1ea7a9cf5d19c 100644
  // TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
  // of lacros-chrome is complete.
 diff --git components/viz/host/host_display_client.h components/viz/host/host_display_client.h
-index 94c5293d528a6..48382075a6119 100644
+index 94c5293d528a6..b53b358e5d6bb 100644
 --- components/viz/host/host_display_client.h
 +++ components/viz/host/host_display_client.h
 @@ -15,6 +15,7 @@
@@ -60,7 +59,7 @@ index 94c5293d528a6..48382075a6119 100644
  #include "ui/gfx/native_widget_types.h"
  
  namespace viz {
-@@ -31,18 +32,21 @@ class VIZ_HOST_EXPORT HostDisplayClient : public mojom::DisplayClient {
+@@ -31,17 +32,20 @@ class VIZ_HOST_EXPORT HostDisplayClient : public mojom::DisplayClient {
    mojo::PendingRemote<mojom::DisplayClient> GetBoundRemote(
        scoped_refptr<base::SingleThreadTaskRunner> task_runner);
  
@@ -84,7 +83,6 @@ index 94c5293d528a6..48382075a6119 100644
  
  // TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
  // of lacros-chrome is complete.
- #if defined(OS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
 diff --git components/viz/host/layered_window_updater_impl.cc components/viz/host/layered_window_updater_impl.cc
 index b04f654fe820f..131977a36591d 100644
 --- components/viz/host/layered_window_updater_impl.cc
@@ -126,7 +124,6 @@ index 34dad16dac566..e5f30075d0416 100644
    ]
  
    defines = [ "VIZ_SERVICE_IMPLEMENTATION" ]
-
 diff --git components/viz/service/display_embedder/output_surface_provider_impl.cc components/viz/service/display_embedder/output_surface_provider_impl.cc
 index 827084542417d..c867eda891bc3 100644
 --- components/viz/service/display_embedder/output_surface_provider_impl.cc
@@ -220,6 +217,80 @@ index 50ff2c9facc2a..c34d1f28d2e90 100644
    root_params->display_client =
        compositor_data.display_client->GetBoundRemote(resize_task_runner_);
  
+diff --git gpu/ipc/common/dxgi_helpers.cc gpu/ipc/common/dxgi_helpers.cc
+index 066d205418fc2..aff1f8fd96794 100644
+--- gpu/ipc/common/dxgi_helpers.cc
++++ gpu/ipc/common/dxgi_helpers.cc
+@@ -118,23 +118,6 @@ bool CopyDXGIBufferToShMem(
+   Microsoft::WRL::ComPtr<ID3D11DeviceContext> device_context;
+   d3d11_device->GetImmediateContext(&device_context);
+ 
+-  Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_mutex;
+-  hr = texture.As(&keyed_mutex);
+-
+-  if (FAILED(hr)) {
+-    DLOG(ERROR) << "Failed to get keyed mutex. hr=" << std::hex << hr;
+-    return false;
+-  }
+-
+-  // Key equal to 0 is also used by the producer. Therefore, this keyed mutex
+-  // acts purely as a regular mutex.
+-  hr = keyed_mutex->AcquireSync(0, INFINITE);
+-  if (FAILED(hr)) {
+-    DLOG(ERROR) << "Failed to acquire keyed mutex. hr=" << std::hex << hr;
+-    return false;
+-  }
+-  DXGIScopedReleaseKeyedMutex release_keyed_mutex(keyed_mutex, 0);
+-
+   device_context->CopySubresourceRegion(staging_texture->Get(), 0, 0, 0, 0,
+                                         texture.Get(), 0, nullptr);
+ 
+@@ -167,4 +150,4 @@ bool CopyDXGIBufferToShMem(
+                           texture_desc.Height) == 0;
+ }
+ 
+-}  // namespace gpu
+\ No newline at end of file
++}  // namespace gpu
+diff --git gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc
+index 335a839d6fdd5..0c31dbcac763a 100644
+--- gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc
++++ gpu/ipc/common/gpu_memory_buffer_impl_dxgi.cc
+@@ -64,7 +64,7 @@ base::OnceClosure GpuMemoryBufferImplDXGI::AllocateForTesting(
+       D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+       0,
+       D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-          D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX};
++          D3D11_RESOURCE_MISC_SHARED};
+ 
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
+ 
+diff --git gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
+index 29725e4f0b56a..59b779836439e 100644
+--- gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
++++ gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
+@@ -126,7 +126,7 @@ gfx::GpuMemoryBufferHandle GpuMemoryBufferFactoryDXGI::CreateGpuMemoryBuffer(
+       D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+       0,
+       D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-          D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX};
++          D3D11_RESOURCE_MISC_SHARED};
+ 
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
+ 
+diff --git media/capture/video/win/gpu_memory_buffer_tracker.cc media/capture/video/win/gpu_memory_buffer_tracker.cc
+index fd76f9ea48619..03457f0b947d4 100644
+--- media/capture/video/win/gpu_memory_buffer_tracker.cc
++++ media/capture/video/win/gpu_memory_buffer_tracker.cc
+@@ -32,7 +32,7 @@ base::win::ScopedHandle CreateNV12Texture(ID3D11Device* d3d11_device,
+       .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+       .CPUAccessFlags = 0,
+       .MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-                   D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX};
++                   D3D11_RESOURCE_MISC_SHARED};
+ 
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
+ 
 diff --git mojo/public/cpp/bindings/sync_call_restrictions.h mojo/public/cpp/bindings/sync_call_restrictions.h
 index fc4142741f793..70f8caae38900 100644
 --- mojo/public/cpp/bindings/sync_call_restrictions.h
@@ -253,7 +324,6 @@ index 417ca186edcd9..d40b2ededc477 100644
      "//gpu/ipc/common:interfaces",
      "//media/capture/mojom:video_capture",
      "//media/mojo/mojom",
-
 diff --git services/viz/privileged/mojom/compositing/display_private.mojom services/viz/privileged/mojom/compositing/display_private.mojom
 index 409115f95787e..0c989449a8a28 100644
 --- services/viz/privileged/mojom/compositing/display_private.mojom
@@ -345,20 +415,121 @@ index dfb0c89dc7bd8..4b54ea85c0298 100644
 +
    // The root of the Layer tree drawn by this compositor.
    Layer* root_layer_ = nullptr;
-
-   
+ 
+diff --git ui/gl/direct_composition_surface_win_unittest.cc ui/gl/direct_composition_surface_win_unittest.cc
+index fb25fcf04a924..c268aa9bd786a 100644
+--- ui/gl/direct_composition_surface_win_unittest.cc
++++ ui/gl/direct_composition_surface_win_unittest.cc
+@@ -95,7 +95,7 @@ Microsoft::WRL::ComPtr<ID3D11Texture2D> CreateNV12Texture(
+   desc.SampleDesc.Count = 1;
+   desc.BindFlags = 0;
+   if (shared) {
+-    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX |
++    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED |
+                      D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+   }
+ 
 diff --git ui/gl/gl_image_dxgi.cc ui/gl/gl_image_dxgi.cc
-index 5285918935d1b..1d8cd12ce76b6 100644
+index 5285918935d1b..7cecd3095e4ff 100644
 --- ui/gl/gl_image_dxgi.cc
 +++ ui/gl/gl_image_dxgi.cc
-@@ -164,8 +164,8 @@ bool GLImageDXGI::BindTexImage(unsigned target) {
+@@ -23,10 +23,6 @@
+ namespace gl {
+ 
+ namespace {
+-// Keys used to acquire and release the keyed mutex.  Will need to be kept in
+-// sync with any other code that reads from or draws to the same DXGI handle.
+-const static UINT64 KEY_BIND = 0;
+-const static UINT64 KEY_RELEASE = 1;
+ 
+ bool SupportedBindFormat(gfx::BufferFormat format) {
+   switch (format) {
+@@ -150,7 +146,6 @@ bool GLImageDXGI::BindTexImage(unsigned target) {
+     return true;
+ 
+   DCHECK(texture_);
+-  DCHECK(keyed_mutex_);
+   if (!SupportedBindFormat(buffer_format_))
+     return false;
+ 
+@@ -164,14 +159,6 @@ bool GLImageDXGI::BindTexImage(unsigned target) {
        return false;
    }
  
 -  // We don't wait, just return immediately.
 -  HRESULT hrWait = keyed_mutex_->AcquireSync(KEY_BIND, 0);
-+  // Wait infinitely
-+  HRESULT hrWait = keyed_mutex_->AcquireSync(KEY_BIND, INFINITE);
+-
+-  if (hrWait == WAIT_TIMEOUT || hrWait == WAIT_ABANDONED || FAILED(hrWait)) {
+-    NOTREACHED();
+-    return false;
+-  }
+-
+   return eglBindTexImage(gl::GLSurfaceEGL::GetHardwareDisplay(), surface_,
+                          EGL_BACK_BUFFER) == EGL_TRUE;
+ }
+@@ -217,9 +204,6 @@ void GLImageDXGI::ReleaseTexImage(unsigned target) {
+     return;
  
-   if (hrWait == WAIT_TIMEOUT || hrWait == WAIT_ABANDONED || FAILED(hrWait)) {
-     NOTREACHED();
+   DCHECK(texture_);
+-  DCHECK(keyed_mutex_);
+-
+-  keyed_mutex_->ReleaseSync(KEY_RELEASE);
+ 
+   eglReleaseTexImage(gl::GLSurfaceEGL::GetHardwareDisplay(), surface_,
+                      EGL_BACK_BUFFER);
+@@ -258,8 +242,6 @@ bool GLImageDXGI::InitializeHandle(base::win::ScopedHandle handle,
+   texture_->GetDesc(&desc);
+   if (desc.ArraySize <= level_)
+     return false;
+-  if (FAILED(texture_.As(&keyed_mutex_)))
+-    return false;
+ 
+   handle_ = std::move(handle);
+   return true;
+diff --git ui/gl/gl_image_dxgi.h ui/gl/gl_image_dxgi.h
+index deacff180e13d..47e0e8c285ba3 100644
+--- ui/gl/gl_image_dxgi.h
++++ ui/gl/gl_image_dxgi.h
+@@ -51,7 +51,6 @@ class GL_EXPORT GLImageDXGI : public GLImage {
+                             std::unique_ptr<gfx::GpuFence> gpu_fence) override;
+ 
+   const gfx::ColorSpace& color_space() const { return color_space_; }
+-  Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_mutex() { return keyed_mutex_; }
+   size_t level() const { return level_; }
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> texture() { return texture_; }
+ 
+@@ -66,7 +65,6 @@ class GL_EXPORT GLImageDXGI : public GLImage {
+ 
+   gfx::BufferFormat buffer_format_ = gfx::BufferFormat::BGRA_8888;
+   base::win::ScopedHandle handle_;
+-  Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_mutex_;
+   size_t level_ = 0;
+   gfx::Size size_;
+   EGLSurface surface_ = nullptr;
+diff --git ui/gl/gl_image_dxgi_unittest.cc ui/gl/gl_image_dxgi_unittest.cc
+index 4499b93fda22e..f388966098b44 100644
+--- ui/gl/gl_image_dxgi_unittest.cc
++++ ui/gl/gl_image_dxgi_unittest.cc
+@@ -36,7 +36,7 @@ class GLImageDXGITestDelegate : public GLImageTestDelegateBase {
+     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+     desc.CPUAccessFlags = 0;
+     desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+-                     D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
++                     D3D11_RESOURCE_MISC_SHARED;
+ 
+     std::vector<unsigned char> originalData(size.width() * size.height() * 4);
+     for (int x = 0; x < size.width(); ++x) {
+diff --git ui/gl/swap_chain_presenter.cc ui/gl/swap_chain_presenter.cc
+index 3beece7a0a23e..bfc3152b70a58 100644
+--- ui/gl/swap_chain_presenter.cc
++++ ui/gl/swap_chain_presenter.cc
+@@ -938,8 +938,7 @@ bool SwapChainPresenter::PresentToSwapChain(ui::DCRendererLayerParams& params) {
+   if (image_dxgi) {
+     input_texture = image_dxgi->texture();
+     input_level = image_dxgi->level();
+-    // Keyed mutex may not exist.
+-    keyed_mutex = image_dxgi->keyed_mutex();
++    // Keyed mutex does not exist. lol
+     input_color_space = image_dxgi->color_space();
+   } else if (image_d3d) {
+     input_texture = image_d3d->texture();
