@@ -364,7 +364,7 @@ diff --git content/renderer/renderer_blink_platform_impl.cc content/renderer/ren
 index 337c630fc85f3..20abead97fe1d 100644
 --- content/renderer/renderer_blink_platform_impl.cc
 +++ content/renderer/renderer_blink_platform_impl.cc
-@@ -1101,6 +1101,15 @@ SkBitmap* RendererBlinkPlatformImpl::GetSadPageBitmap() {
+@@ -1105,6 +1105,15 @@ SkBitmap* RendererBlinkPlatformImpl::GetSadPageBitmap() {
  
  //------------------------------------------------------------------------------
  
@@ -377,9 +377,9 @@ index 337c630fc85f3..20abead97fe1d 100644
 +
 +//------------------------------------------------------------------------------
 +
- blink::mojom::CodeCacheHost& RendererBlinkPlatformImpl::GetCodeCacheHost() {
-   if (!code_cache_host_) {
-     code_cache_host_ = mojo::SharedRemote<blink::mojom::CodeCacheHost>(
+ mojo::SharedRemote<blink::mojom::CodeCacheHost>
+ RendererBlinkPlatformImpl::GetCodeCacheHost() {
+   base::AutoLock lock(code_cache_host_lock_);
 diff --git content/renderer/renderer_blink_platform_impl.h content/renderer/renderer_blink_platform_impl.h
 index b199c34615f02..43ced4c4d8cf5 100644
 --- content/renderer/renderer_blink_platform_impl.h
