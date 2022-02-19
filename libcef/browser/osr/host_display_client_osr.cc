@@ -33,7 +33,11 @@ class CefExternalRendererUpdaterOSR
   ~CefExternalRendererUpdaterOSR() override;
 
   // viz::mojom::ExternalRendererUpdater implementation.
-  void OnAfterFlip(gfx::GpuMemoryBufferHandle handle,
+  void OnAfterFlip(gfx::GpuMemoryBufferHandle handle1,
+                   gfx::GpuMemoryBufferHandle handle2,
+                   gfx::GpuMemoryBufferHandle handle3,
+                   int32_t cur_texture,
+                   bool texture_changed,
                    const gfx::Rect& damage_rect,
                    OnAfterFlipCallback callback) override;
 
@@ -52,17 +56,31 @@ CefExternalRendererUpdaterOSR::CefExternalRendererUpdaterOSR(
 CefExternalRendererUpdaterOSR::~CefExternalRendererUpdaterOSR() = default;
 
 void CefExternalRendererUpdaterOSR::OnAfterFlip(
-    gfx::GpuMemoryBufferHandle handle,
+    gfx::GpuMemoryBufferHandle handle1,
+    gfx::GpuMemoryBufferHandle handle2,
+    gfx::GpuMemoryBufferHandle handle3,
+    int32_t cur_texture,
+    bool textures_changed,
     const gfx::Rect& damage_rect,
     OnAfterFlipCallback callback) {
 #if defined (OS_WIN) && !defined(ARCH_CPU_ARM_FAMILY)
-  HANDLE nthandle = handle.dxgi_handle.Get();
-  view_->OnAcceleratedPaint(damage_rect, nthandle);
+  if (textures_changed) {
+    HANDLE nthandles[3] = {handle1.dxgi_handle.Get(),
+                           handle2.dxgi_handle.Get(),
+                           handle3.dxgi_handle.Get()};
+    view_->OnAcceleratedPaint2(damage_rect, nthandles, cur_texture, true);
+  } else {
+    view_->OnAcceleratedPaint2(damage_rect, nullptr, cur_texture, false);
+  }
 #elif defined(OS_MAC)
-  view_->OnAcceleratedPaint(damage_rect,
-                            (void*)(uintptr_t)(handle.io_surface.get()));
-#else
-  view_->OnAcceleratedPaint(damage_rect, nullptr);
+  if (textures_changed) {
+    void* handles[3] = {(void*)(uintptr_t)(handle1.io_surface.get()),
+                        (void*)(uintptr_t)(handle2.io_surface.get()),
+                        (void*)(uintptr_t)(handle3.io_surface.get())};
+    view_->OnAcceleratedPaint2(damage_rect, handles, cur_texture, true);
+  } else {
+    view_->OnAcceleratedPaint2(damage_rect, nullptr, cur_texture, false);
+  }
 #endif
   std::move(callback).Run();
 }

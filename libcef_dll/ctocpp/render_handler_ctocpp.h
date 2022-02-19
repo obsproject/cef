@@ -57,6 +57,12 @@ class CefRenderHandlerCToCpp
                           PaintElementType type,
                           const RectList& dirtyRects,
                           void* shared_handle) override;
+  void OnAcceleratedPaint2(CefRefPtr<CefBrowser> browser,
+                           PaintElementType type,
+                           const RectList& dirtyRects,
+                           void* shared_handles[3],
+                           int cur_texture,
+                           bool textures_changed) override;
   bool StartDragging(CefRefPtr<CefBrowser> browser,
                      CefRefPtr<CefDragData> drag_data,
                      DragOperationsMask allowed_ops,

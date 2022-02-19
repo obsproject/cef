@@ -231,6 +231,10 @@ class CefRenderWidgetHostViewOSR
                const gfx::Size& pixel_size,
                const void* pixels);
   void OnAcceleratedPaint(const gfx::Rect& damage_rect, void* shared_texture);
+  void OnAcceleratedPaint2(const gfx::Rect& damage_rect,
+                           void* shared_textures[3],
+                           int cur_texture,
+                           bool textures_changed);
 
   void OnBeginFame(base::TimeTicks frame_time);
 

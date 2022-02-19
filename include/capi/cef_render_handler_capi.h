@@ -179,6 +179,24 @@ typedef struct _cef_render_handler_t {
                                            void* shared_handle);
 
   ///
+  // Similar to above, but |shared_handle| is a 3-item array, |cur_texture|
+  // specifies which of the three to use, and |textures_changed| specifies
+  // whether the textures should be recreated or not.
+  //
+  // (Jim: I made this use three cycling textures, and made it include two
+  // parameters to indicate which texture to use and whether to update the
+  // textures.)
+  ///
+  void(CEF_CALLBACK* on_accelerated_paint2)(struct _cef_render_handler_t* self,
+                                           struct _cef_browser_t* browser,
+                                           cef_paint_element_type_t type,
+                                           size_t dirtyRectsCount,
+                                           cef_rect_t const* dirtyRects,
+                                           void* shared_handles[3],
+                                           int cur_texture,
+                                           bool textures_changed);
+
+  ///
   // Called when the user starts dragging content in the web view. Contextual
   // information about the dragged content is supplied by |drag_data|. (|x|,
   // |y|) is the drag start location in screen coordinates. OS APIs that run a

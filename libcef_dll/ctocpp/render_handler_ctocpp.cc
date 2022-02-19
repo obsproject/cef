@@ -266,6 +266,51 @@ void CefRenderHandlerCToCpp::OnAcceleratedPaint(CefRefPtr<CefBrowser> browser,
 }
 
 NO_SANITIZE("cfi-icall")
+void CefRenderHandlerCToCpp::OnAcceleratedPaint2(CefRefPtr<CefBrowser> browser,
+                                                 PaintElementType type,
+                                                 const RectList& dirtyRects,
+                                                 void* shared_handles[3],
+                                                 int cur_texture,
+                                                 bool textures_changed) {
+  shutdown_checker::AssertNotShutdown();
+
+  cef_render_handler_t* _struct = GetStruct();
+  if (CEF_MEMBER_MISSING(_struct, on_accelerated_paint2))
+    return;
+
+  // Verify param: browser; type: refptr_diff
+  DCHECK(browser.get());
+  if (!browser.get())
+    return;
+  // Verify param: shared_handles; type: simple_byaddr
+  DCHECK(!textures_changed || shared_handles);
+  if (textures_changed && !shared_handles)
+    return;
+
+  // Translate param: dirtyRects; type: simple_vec_byref_const
+  const size_t dirtyRectsCount = dirtyRects.size();
+  cef_rect_t* dirtyRectsList = NULL;
+  if (dirtyRectsCount > 0) {
+    dirtyRectsList = new cef_rect_t[dirtyRectsCount];
+    DCHECK(dirtyRectsList);
+    if (dirtyRectsList) {
+      for (size_t i = 0; i < dirtyRectsCount; ++i) {
+        dirtyRectsList[i] = dirtyRects[i];
+      }
+    }
+  }
+
+  // Execute
+  _struct->on_accelerated_paint2(_struct, CefBrowserCppToC::Wrap(browser), type,
+                                 dirtyRectsCount, dirtyRectsList,
+                                 shared_handles, cur_texture, textures_changed);
+
+  // Restore param:dirtyRects; type: simple_vec_byref_const
+  if (dirtyRectsList)
+    delete[] dirtyRectsList;
+}
+
+NO_SANITIZE("cfi-icall")
 bool CefRenderHandlerCToCpp::StartDragging(CefRefPtr<CefBrowser> browser,
                                            CefRefPtr<CefDragData> drag_data,
                                            DragOperationsMask allowed_ops,

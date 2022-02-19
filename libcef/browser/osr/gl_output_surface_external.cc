@@ -151,11 +151,8 @@ void GLOutputSurfaceExternal::EnsureBackbuffer() {
   if (size_.IsEmpty())
     return;
 
-  if (!available_surfaces_.empty()) {
-    current_surface_ = std::move(available_surfaces_.back());
-    available_surfaces_.pop_back();
-    return;
-  }
+  textures_changed_ = true;
+  cur_surface_ = 0;
 
   gpu::gles2::GLES2Interface* gl = context_provider_->ContextGL();
 
@@ -164,10 +161,14 @@ void GLOutputSurfaceExternal::EnsureBackbuffer() {
   gfx::Size texture_size(std::min(size_.width(), max_texture_size),
                          std::min(size_.height(), max_texture_size));
 
-  current_surface_ = std::make_unique<ExternalImageData>(
-      gl, context_provider_->ContextCapabilities());
-  current_surface_->Create(texture_size, color_space_,
-                           gpu_memory_buffer_manager_);
+  for (size_t i = 0; i < 3; i++) {
+    std::unique_ptr<ExternalImageData> surface =
+      std::make_unique<ExternalImageData>(gl,
+          context_provider_->ContextCapabilities());
+
+    surface->Create(texture_size, color_space_, gpu_memory_buffer_manager_);
+    surfaces_.push_back(std::move(surface));
+  }
 
   if (!fbo_) {
     gl->GenFramebuffers(1, &fbo_);
@@ -175,12 +176,7 @@ void GLOutputSurfaceExternal::EnsureBackbuffer() {
 }
 
 void GLOutputSurfaceExternal::DiscardBackbuffer() {
-  displayed_surface_.reset();
-  displaying_surface_.reset();
-  current_surface_.reset();
-  for (auto& surface : in_flight_surfaces_)
-    surface = nullptr;
-  available_surfaces_.clear();
+  surfaces_.clear();
 
   gpu::gles2::GLES2Interface* gl = context_provider_->ContextGL();
 
@@ -194,11 +190,11 @@ void GLOutputSurfaceExternal::DiscardBackbuffer() {
 }
 
 void GLOutputSurfaceExternal::BindFramebuffer() {
-  if (!current_surface_) {
+  if (!surfaces_.size()) {
     EnsureBackbuffer();
   }
-  if (current_surface_) {
-    current_surface_->BindTexture(fbo_);
+  if (surfaces_.size()) {
+    surfaces_[cur_surface_]->BindTexture(fbo_);
   } else {
     LOG(ERROR) << "No surface available to bind";
   }
@@ -223,7 +219,7 @@ void GLOutputSurfaceExternal::SwapBuffers(OutputSurfaceFrame frame) {
   gpu::gles2::GLES2Interface* gl = context_provider_->ContextGL();
 
   gl->Flush();
-  current_surface_->UnbindTexture();
+  surfaces_[cur_surface_]->UnbindTexture();
 
   gpu::SyncToken sync_token;
   gl->GenUnverifiedSyncTokenCHROMIUM(sync_token.GetData());
@@ -235,16 +231,21 @@ void GLOutputSurfaceExternal::SwapBuffers(OutputSurfaceFrame frame) {
 
 void GLOutputSurfaceExternal::OnSyncWaitComplete(
     std::vector<ui::LatencyInfo> latency_info) {
-  gfx::GpuMemoryBufferHandle handle = current_surface_->GetHandle();
 
-  in_flight_surfaces_.push_back(std::move(current_surface_));
-
-  if (handle.type != gfx::GpuMemoryBufferType::EMPTY_BUFFER) {
+  if (surfaces_.size()) {
+    gfx::GpuMemoryBufferHandle handles[3];
+    if (textures_changed_) {
+      for (size_t i = 0; i < 3; i++) {
+        handles[i] = surfaces_[i]->GetHandle();
+      }
+    }
     external_renderer_updater_->OnAfterFlip(
-        std::move(handle), gfx::Rect(size_),
+        std::move(handles[0]), std::move(handles[1]), std::move(handles[2]),
+        cur_surface_, textures_changed_, gfx::Rect(size_),
         base::BindOnce(&GLOutputSurfaceExternal::OnAfterSwap,
                        weak_ptr_factory_.GetWeakPtr(),
                        std::move(latency_info)));
+    textures_changed_ = false;
   } else {
     OnAfterSwap(latency_info);
   }
@@ -252,16 +253,8 @@ void GLOutputSurfaceExternal::OnSyncWaitComplete(
 
 void GLOutputSurfaceExternal::OnAfterSwap(
     std::vector<ui::LatencyInfo> latency_info) {
-  if (in_flight_surfaces_.front()) {
-    if (displayed_surface_) {
-      available_surfaces_.push_back(std::move(displayed_surface_));
-    }
-    if (displaying_surface_) {
-      displayed_surface_ = std::move(displaying_surface_);
-    }
-    displaying_surface_ = std::move(in_flight_surfaces_.front());
-  }
-  in_flight_surfaces_.pop_front();
+  if (++cur_surface_ == 3)
+    cur_surface_ = 0;
 
   latency_tracker()->OnGpuSwapBuffersCompleted(latency_info);
   // Swap timings are not available since for offscreen there is no Swap, just a

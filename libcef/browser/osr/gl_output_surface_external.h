@@ -47,11 +47,9 @@ class VIZ_SERVICE_EXPORT GLOutputSurfaceExternal : public GLOutputSurface {
 
   ExternalImageData* CreateSurface();
 
-  std::unique_ptr<ExternalImageData> current_surface_;
-  std::unique_ptr<ExternalImageData> displaying_surface_;
-  std::unique_ptr<ExternalImageData> displayed_surface_;
-  std::vector<std::unique_ptr<ExternalImageData>> available_surfaces_;
-  base::circular_deque<std::unique_ptr<ExternalImageData>> in_flight_surfaces_;
+  std::vector<std::unique_ptr<ExternalImageData>> surfaces_;
+  int32_t cur_surface_ = 0;
+  bool textures_changed_ = true;
 
   uint32_t fbo_ = 0;
   gfx::Size size_;

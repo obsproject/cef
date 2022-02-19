@@ -1497,6 +1497,39 @@ void CefRenderWidgetHostViewOSR::OnAcceleratedPaint(
     ReleaseResizeHold();
 }
 
+void CefRenderWidgetHostViewOSR::OnAcceleratedPaint2(
+    const gfx::Rect& damage_rect,
+    void* shared_textures[3],
+    int cur_texture,
+    bool textures_changed) {
+  if (!use_shared_texture_) {
+    return;
+  }
+
+  CefRefPtr<CefRenderHandler> handler =
+      browser_impl_->client()->GetRenderHandler();
+  CHECK(handler);
+
+  gfx::Rect rect_in_pixels(GetViewBounds());
+  rect_in_pixels.Intersect(damage_rect);
+
+  CefRenderHandler::RectList rcList;
+  rcList.push_back(CefRect(rect_in_pixels.x(), rect_in_pixels.y(),
+                           rect_in_pixels.width(), rect_in_pixels.height()));
+
+  handler->OnAcceleratedPaint2(browser_impl_.get(),
+                               IsPopupWidget() ? PET_POPUP : PET_VIEW, rcList,
+                               shared_textures,
+                               cur_texture,
+                               textures_changed);
+
+  // Release the resize hold when we reach the desired size. The damage rect is
+  // currently always equal to the full texture size.
+  gfx::Size pixel_size(damage_rect.width(), damage_rect.height());
+  if (hold_resize_ && pixel_size == SizeInPixels())
+    ReleaseResizeHold();
+}
+
 ui::Layer* CefRenderWidgetHostViewOSR::GetRootLayer() const {
   return root_layer_.get();
 }
