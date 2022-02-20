@@ -45,6 +45,8 @@
 #include "include/cef_browser.h"
 #include "include/cef_drag_data.h"
 
+#define CEF_ON_ACCELERATED_PAINT2 1
+
 ///
 // Implement this interface to handle events when window rendering is disabled.
 // The methods of this class will be called on the UI thread.

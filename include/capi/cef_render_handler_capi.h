@@ -49,6 +49,8 @@
 extern "C" {
 #endif
 
+#define CEF_ON_ACCELERATED_PAINT2 1
+
 ///
 // Implement this structure to handle events when window rendering is disabled.
 // The functions of this structure will be called on the UI thread.
