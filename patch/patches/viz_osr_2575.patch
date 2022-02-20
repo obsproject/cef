@@ -266,11 +266,15 @@ index 335a839d6fdd5..0c31dbcac763a 100644
    Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
  
 diff --git gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
-index 29725e4f0b56a..59b779836439e 100644
+index 29725e4f0b56a..3b5d8790d85d3 100644
 --- gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
 +++ gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
-@@ -126,7 +126,7 @@ gfx::GpuMemoryBufferHandle GpuMemoryBufferFactoryDXGI::CreateGpuMemoryBuffer(
-       D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+@@ -123,10 +123,10 @@ gfx::GpuMemoryBufferHandle GpuMemoryBufferFactoryDXGI::CreateGpuMemoryBuffer(
+       dxgi_format,
+       {1, 0},
+       D3D11_USAGE_DEFAULT,
+-      D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
++      D3D11_BIND_SHADER_RESOURCE,
        0,
        D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
 -          D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX};
@@ -430,7 +434,7 @@ index fb25fcf04a924..c268aa9bd786a 100644
    }
  
 diff --git ui/gl/gl_image_dxgi.cc ui/gl/gl_image_dxgi.cc
-index 5285918935d1b..7cecd3095e4ff 100644
+index 5285918935d1b..445deab72d424 100644
 --- ui/gl/gl_image_dxgi.cc
 +++ ui/gl/gl_image_dxgi.cc
 @@ -23,10 +23,6 @@
@@ -467,27 +471,54 @@ index 5285918935d1b..7cecd3095e4ff 100644
    return eglBindTexImage(gl::GLSurfaceEGL::GetHardwareDisplay(), surface_,
                           EGL_BACK_BUFFER) == EGL_TRUE;
  }
-@@ -217,9 +204,6 @@ void GLImageDXGI::ReleaseTexImage(unsigned target) {
+@@ -217,9 +204,19 @@ void GLImageDXGI::ReleaseTexImage(unsigned target) {
      return;
  
    DCHECK(texture_);
 -  DCHECK(keyed_mutex_);
--
+ 
 -  keyed_mutex_->ReleaseSync(KEY_RELEASE);
++  // Copy to the shared texture as a form of jank synchronization
++  if (staging_.Get() && texture_.Get()) {
++    Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device;
++    staging_->GetDevice(&d3d11_device);
++    if (d3d11_device.Get()) {
++      Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d11_ctx;
++      d3d11_device->GetImmediateContext(&d3d11_ctx);
++      if (d3d11_ctx.Get()) {
++        d3d11_ctx->CopyResource(staging_.Get(), texture_.Get());
++      }
++    }
++  }
  
    eglReleaseTexImage(gl::GLSurfaceEGL::GetHardwareDisplay(), surface_,
                       EGL_BACK_BUFFER);
-@@ -258,8 +242,6 @@ bool GLImageDXGI::InitializeHandle(base::win::ScopedHandle handle,
-   texture_->GetDesc(&desc);
+@@ -251,15 +248,20 @@ bool GLImageDXGI::InitializeHandle(base::win::ScopedHandle handle,
+     return false;
+ 
+   if (FAILED(d3d11_device1->OpenSharedResource1(handle.Get(),
+-                                                IID_PPV_ARGS(&texture_)))) {
++                                                IID_PPV_ARGS(&staging_)))) {
+     return false;
+   }
+   D3D11_TEXTURE2D_DESC desc;
+-  texture_->GetDesc(&desc);
++  staging_->GetDesc(&desc);
    if (desc.ArraySize <= level_)
      return false;
 -  if (FAILED(texture_.As(&keyed_mutex_)))
--    return false;
++
++  desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
++  desc.MiscFlags = 0;
++
++  if (FAILED(d3d11_device1->CreateTexture2D(&desc, nullptr, &texture_))) {
+     return false;
++  }
  
    handle_ = std::move(handle);
    return true;
 diff --git ui/gl/gl_image_dxgi.h ui/gl/gl_image_dxgi.h
-index deacff180e13d..47e0e8c285ba3 100644
+index deacff180e13d..8aa59e0a7fb0d 100644
 --- ui/gl/gl_image_dxgi.h
 +++ ui/gl/gl_image_dxgi.h
 @@ -51,7 +51,6 @@ class GL_EXPORT GLImageDXGI : public GLImage {
@@ -498,7 +529,7 @@ index deacff180e13d..47e0e8c285ba3 100644
    size_t level() const { return level_; }
    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture() { return texture_; }
  
-@@ -66,7 +65,6 @@ class GL_EXPORT GLImageDXGI : public GLImage {
+@@ -66,12 +65,12 @@ class GL_EXPORT GLImageDXGI : public GLImage {
  
    gfx::BufferFormat buffer_format_ = gfx::BufferFormat::BGRA_8888;
    base::win::ScopedHandle handle_;
@@ -506,6 +537,12 @@ index deacff180e13d..47e0e8c285ba3 100644
    size_t level_ = 0;
    gfx::Size size_;
    EGLSurface surface_ = nullptr;
+   EGLStreamKHR stream_ = nullptr;
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> texture_;
++  Microsoft::WRL::ComPtr<ID3D11Texture2D> staging_;
+ };
+ 
+ // This copies to a new texture on bind.
 diff --git ui/gl/gl_image_dxgi_unittest.cc ui/gl/gl_image_dxgi_unittest.cc
 index 4499b93fda22e..f388966098b44 100644
 --- ui/gl/gl_image_dxgi_unittest.cc
