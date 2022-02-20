@@ -324,6 +324,43 @@ render_handler_on_accelerated_paint(struct _cef_render_handler_t* self,
       CefBrowserCToCpp::Wrap(browser), type, dirtyRectsList, shared_handle);
 }
 
+void CEF_CALLBACK
+render_handler_on_accelerated_paint2(struct _cef_render_handler_t* self,
+                                     cef_browser_t* browser,
+                                     cef_paint_element_type_t type,
+                                     size_t dirtyRectsCount,
+                                     cef_rect_t const* dirtyRects,
+                                     void* shared_handle,
+                                     bool new_texture) {
+  shutdown_checker::AssertNotShutdown();
+
+  DCHECK(self);
+  if (!self)
+    return;
+  // Verify param: browser; type: refptr_diff
+  DCHECK(browser);
+  if (!browser)
+    return;
+  // Verify param: dirtyRects; type: simple_vec_byref_const
+  DCHECK(dirtyRectsCount == 0 || dirtyRects);
+  if (dirtyRectsCount > 0 && !dirtyRects)
+    return;
+
+  // Translate param: dirtyRects; type: simple_vec_byref_const
+  std::vector<CefRect> dirtyRectsList;
+  if (dirtyRectsCount > 0) {
+    for (size_t i = 0; i < dirtyRectsCount; ++i) {
+      CefRect dirtyRectsVal = dirtyRects[i];
+      dirtyRectsList.push_back(dirtyRectsVal);
+    }
+  }
+
+  // Execute
+  CefRenderHandlerCppToC::Get(self)->OnAcceleratedPaint2(
+      CefBrowserCToCpp::Wrap(browser), type, dirtyRectsList, shared_handle,
+      new_texture);
+}
+
 int CEF_CALLBACK
 render_handler_start_dragging(struct _cef_render_handler_t* self,
                               cef_browser_t* browser,
@@ -504,6 +541,7 @@ CefRenderHandlerCppToC::CefRenderHandlerCppToC() {
   GetStruct()->on_popup_size = render_handler_on_popup_size;
   GetStruct()->on_paint = render_handler_on_paint;
   GetStruct()->on_accelerated_paint = render_handler_on_accelerated_paint;
+  GetStruct()->on_accelerated_paint2 = render_handler_on_accelerated_paint2;
   GetStruct()->start_dragging = render_handler_start_dragging;
   GetStruct()->update_drag_cursor = render_handler_update_drag_cursor;
   GetStruct()->on_scroll_offset_changed =

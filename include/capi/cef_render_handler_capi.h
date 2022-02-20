@@ -178,6 +178,13 @@ typedef struct _cef_render_handler_t {
                                            cef_rect_t const* dirtyRects,
                                            void* shared_handle);
 
+  void(CEF_CALLBACK* on_accelerated_paint2)(struct _cef_render_handler_t* self,
+                                            struct _cef_browser_t* browser,
+                                            cef_paint_element_type_t type,
+                                            size_t dirtyRectsCount,
+                                            cef_rect_t const* dirtyRects,
+                                            void* shared_handle,
+                                            bool new_texture);
   ///
   // Called when the user starts dragging content in the web view. Contextual
   // information about the dragged content is supplied by |drag_data|. (|x|,
