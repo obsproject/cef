@@ -151,12 +151,6 @@ void GLOutputSurfaceExternal::EnsureBackbuffer() {
   if (size_.IsEmpty())
     return;
 
-  if (!available_surfaces_.empty()) {
-    current_surface_ = std::move(available_surfaces_.back());
-    available_surfaces_.pop_back();
-    return;
-  }
-
   gpu::gles2::GLES2Interface* gl = context_provider_->ContextGL();
 
   const int max_texture_size =
@@ -168,6 +162,7 @@ void GLOutputSurfaceExternal::EnsureBackbuffer() {
       gl, context_provider_->ContextCapabilities());
   current_surface_->Create(texture_size, color_space_,
                            gpu_memory_buffer_manager_);
+  new_texture = true;
 
   if (!fbo_) {
     gl->GenFramebuffers(1, &fbo_);
@@ -175,12 +170,7 @@ void GLOutputSurfaceExternal::EnsureBackbuffer() {
 }
 
 void GLOutputSurfaceExternal::DiscardBackbuffer() {
-  displayed_surface_.reset();
-  displaying_surface_.reset();
   current_surface_.reset();
-  for (auto& surface : in_flight_surfaces_)
-    surface = nullptr;
-  available_surfaces_.clear();
 
   gpu::gles2::GLES2Interface* gl = context_provider_->ContextGL();
 
@@ -207,6 +197,7 @@ void GLOutputSurfaceExternal::BindFramebuffer() {
 void GLOutputSurfaceExternal::Reshape(const ReshapeParams& params) {
   const gfx::Size& size = params.size;
   const gfx::ColorSpace& color_space = params.color_space;
+
   if (size_ == size && color_space_ == color_space) {
     return;
   }
@@ -233,16 +224,17 @@ void GLOutputSurfaceExternal::SwapBuffers(OutputSurfaceFrame frame) {
 
 void GLOutputSurfaceExternal::OnSyncWaitComplete(
     std::vector<ui::LatencyInfo> latency_info) {
-  gfx::GpuMemoryBufferHandle handle = current_surface_->GetHandle();
+  gfx::GpuMemoryBufferHandle handle;
+  if (new_texture)
+    handle = current_surface_->GetHandle();
 
-  in_flight_surfaces_.push_back(std::move(current_surface_));
-
-  if (handle.type != gfx::GpuMemoryBufferType::EMPTY_BUFFER) {
+  if (current_surface_) {
     external_renderer_updater_->OnAfterFlip(
-        std::move(handle), gfx::Rect(size_),
+        std::move(handle), new_texture, gfx::Rect(size_),
         base::BindOnce(&GLOutputSurfaceExternal::OnAfterSwap,
                        weak_ptr_factory_.GetWeakPtr(),
                        std::move(latency_info)));
+    new_texture = false;
   } else {
     OnAfterSwap(latency_info);
   }
@@ -250,17 +242,6 @@ void GLOutputSurfaceExternal::OnSyncWaitComplete(
 
 void GLOutputSurfaceExternal::OnAfterSwap(
     std::vector<ui::LatencyInfo> latency_info) {
-  if (in_flight_surfaces_.front()) {
-    if (displayed_surface_) {
-      available_surfaces_.push_back(std::move(displayed_surface_));
-    }
-    if (displaying_surface_) {
-      displayed_surface_ = std::move(displaying_surface_);
-    }
-    displaying_surface_ = std::move(in_flight_surfaces_.front());
-  }
-  in_flight_surfaces_.pop_front();
-
   latency_tracker()->OnGpuSwapBuffersCompleted(latency_info);
   // Swap timings are not available since for offscreen there is no Swap, just a
   // SignalSyncToken. We use base::TimeTicks::Now() as an overestimate.

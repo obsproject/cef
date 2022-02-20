@@ -34,6 +34,7 @@ class CefExternalRendererUpdaterOSR
 
   // viz::mojom::ExternalRendererUpdater implementation.
   void OnAfterFlip(gfx::GpuMemoryBufferHandle handle,
+                   bool new_texture,
                    const gfx::Rect& damage_rect,
                    OnAfterFlipCallback callback) override;
 
@@ -54,16 +55,20 @@ CefExternalRendererUpdaterOSR::~CefExternalRendererUpdaterOSR() = default;
 
 void CefExternalRendererUpdaterOSR::OnAfterFlip(
     gfx::GpuMemoryBufferHandle handle,
+    bool new_texture,
     const gfx::Rect& damage_rect,
     OnAfterFlipCallback callback) {
 #if defined (OS_WIN) && !defined(ARCH_CPU_ARM_FAMILY)
-  HANDLE nthandle = handle.dxgi_handle.Get();
-  view_->OnAcceleratedPaint(damage_rect, nthandle);
+  HANDLE nthandle = nullptr;
+  if (new_texture)
+    nthandle = handle.dxgi_handle.Get();
+  view_->OnAcceleratedPaint2(damage_rect, nthandle, new_texture);
 #elif defined(OS_MAC)
-  view_->OnAcceleratedPaint(damage_rect,
-                            (void*)(uintptr_t)(handle.io_surface.get()));
+  view_->OnAcceleratedPaint2(damage_rect,
+                             (void*)(uintptr_t)(handle.io_surface.get()),
+                             new_texture);
 #else
-  view_->OnAcceleratedPaint(damage_rect, nullptr);
+  view_->OnAcceleratedPaint2(damage_rect, nullptr, false);
 #endif
   std::move(callback).Run();
 }

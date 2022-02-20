@@ -182,6 +182,12 @@ class CefRenderHandler : public virtual CefBaseRefCounted {
                                   const RectList& dirtyRects,
                                   void* shared_handle) {}
 
+  virtual void OnAcceleratedPaint2(CefRefPtr<CefBrowser> browser,
+                                   PaintElementType type,
+                                   const RectList& dirtyRects,
+                                   void* shared_handle,
+                                   bool new_texture) {}
+
   ///
   // Called when the user starts dragging content in the web view. Contextual
   // information about the dragged content is supplied by |drag_data|.

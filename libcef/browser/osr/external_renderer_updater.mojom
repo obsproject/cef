@@ -9,5 +9,6 @@ import "ui/gfx/geometry/mojom/geometry.mojom";
 import "ui/gfx/mojom/buffer_types.mojom";
 
 interface ExternalRendererUpdater {
-  OnAfterFlip(gfx.mojom.GpuMemoryBufferHandle buffer, gfx.mojom.Rect damage_rect) => ();
+  OnAfterFlip(gfx.mojom.GpuMemoryBufferHandle buffer, bool new_texture, gfx.mojom.Rect damage_rect) => ();
 };
+
