@@ -1,0 +1,13 @@
+// Copyright 2018 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module viz.mojom;
+
+import "mojo/public/mojom/base/shared_memory.mojom";
+import "ui/gfx/geometry/mojom/geometry.mojom";
+import "ui/gfx/mojom/buffer_types.mojom";
+
+interface ExternalRendererUpdater {
+  OnAfterFlip(gfx.mojom.GpuMemoryBufferHandle buffer, bool new_texture, gfx.mojom.Rect damage_rect) => ();
+};
