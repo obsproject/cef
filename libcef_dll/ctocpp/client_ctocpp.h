@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=69f82ee575779deaf1d3581dbedcf8aa75f35710$
+// $hash=9997aeb03cfa2ac716be8466f618cf43c80ff5f5$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_CLIENT_CTOCPP_H_
@@ -43,6 +43,7 @@ class CefClientCToCpp
   CefRefPtr<CefFindHandler> GetFindHandler() override;
   CefRefPtr<CefFocusHandler> GetFocusHandler() override;
   CefRefPtr<CefFrameHandler> GetFrameHandler() override;
+  CefRefPtr<CefMediaAccessHandler> GetMediaAccessHandler() override;
   CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override;
   CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override;
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override;

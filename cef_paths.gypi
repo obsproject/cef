@@ -8,7 +8,7 @@
 # by hand. See the translator.README.txt file in the tools directory for
 # more information.
 #
-# $hash=5f2e9bf79ec768c0eb978ff5e1dd0178701dcc21$
+# $hash=c6ad43c2e79293ca4032994fe16fd82922a7a229$
 #
 
 {
@@ -48,6 +48,7 @@
       'include/cef_keyboard_handler.h',
       'include/cef_life_span_handler.h',
       'include/cef_load_handler.h',
+      'include/cef_media_access_handler.h',
       'include/cef_media_router.h',
       'include/cef_menu_model.h',
       'include/cef_menu_model_delegate.h',
@@ -147,6 +148,7 @@
       'include/capi/cef_keyboard_handler_capi.h',
       'include/capi/cef_life_span_handler_capi.h',
       'include/capi/cef_load_handler_capi.h',
+      'include/capi/cef_media_access_handler_capi.h',
       'include/capi/cef_media_router_capi.h',
       'include/capi/cef_menu_model_capi.h',
       'include/capi/cef_menu_model_delegate_capi.h',
@@ -328,6 +330,10 @@
       'libcef_dll/cpptoc/list_value_cpptoc.h',
       'libcef_dll/ctocpp/load_handler_ctocpp.cc',
       'libcef_dll/ctocpp/load_handler_ctocpp.h',
+      'libcef_dll/cpptoc/media_access_callback_cpptoc.cc',
+      'libcef_dll/cpptoc/media_access_callback_cpptoc.h',
+      'libcef_dll/ctocpp/media_access_handler_ctocpp.cc',
+      'libcef_dll/ctocpp/media_access_handler_ctocpp.h',
       'libcef_dll/ctocpp/media_observer_ctocpp.cc',
       'libcef_dll/ctocpp/media_observer_ctocpp.h',
       'libcef_dll/cpptoc/media_route_cpptoc.cc',
@@ -634,6 +640,10 @@
       'libcef_dll/ctocpp/list_value_ctocpp.h',
       'libcef_dll/cpptoc/load_handler_cpptoc.cc',
       'libcef_dll/cpptoc/load_handler_cpptoc.h',
+      'libcef_dll/ctocpp/media_access_callback_ctocpp.cc',
+      'libcef_dll/ctocpp/media_access_callback_ctocpp.h',
+      'libcef_dll/cpptoc/media_access_handler_cpptoc.cc',
+      'libcef_dll/cpptoc/media_access_handler_cpptoc.h',
       'libcef_dll/cpptoc/media_observer_cpptoc.cc',
       'libcef_dll/cpptoc/media_observer_cpptoc.h',
       'libcef_dll/ctocpp/media_route_ctocpp.cc',

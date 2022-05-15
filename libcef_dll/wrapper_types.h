@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=7a247cc26167ddbc4fbe23ed939fa9e39c48a09c$
+// $hash=a8377148dec26ea94e988383229e5cd00d0e300d$
 //
 
 #ifndef CEF_LIBCEF_DLL_WRAPPER_TYPES_H_
@@ -77,6 +77,8 @@ enum CefWrapperType {
   WT_LIFE_SPAN_HANDLER,
   WT_LIST_VALUE,
   WT_LOAD_HANDLER,
+  WT_MEDIA_ACCESS_CALLBACK,
+  WT_MEDIA_ACCESS_HANDLER,
   WT_MEDIA_OBSERVER,
   WT_MEDIA_ROUTE,
   WT_MEDIA_ROUTE_CREATE_CALLBACK,
