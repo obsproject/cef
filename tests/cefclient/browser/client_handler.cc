@@ -741,6 +741,20 @@ void ClientHandler::OnLoadError(CefRefPtr<CefBrowser> browser,
   LoadErrorPage(frame, failedUrl, errorCode, errorText);
 }
 
+bool ClientHandler::OnRequestMediaAccessPermission(
+    CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefFrame> frame,
+    const CefString& requesting_url,
+    int32_t requested_permissions,
+    CefRefPtr<CefMediaAccessCallback> callback) {
+  bool value = test_runner::AllowWebcam;
+  if (value)
+    callback->Continue(requested_permissions);
+  else
+    callback->Continue(CEF_MEDIA_PERMISSION_NONE);
+  return true;
+}
+
 bool ClientHandler::OnBeforeBrowse(CefRefPtr<CefBrowser> browser,
                                    CefRefPtr<CefFrame> frame,
                                    CefRefPtr<CefRequest> request,

@@ -33,6 +33,8 @@
 namespace client {
 namespace test_runner {
 
+bool AllowWebcam = false;
+
 namespace {
 
 const char kTestHost[] = "tests";
@@ -589,6 +591,12 @@ void RunTest(CefRefPtr<CefBrowser> browser, int id) {
       break;
     case ID_TESTS_UNMUTE_AUDIO:
       MuteAudio(browser, false);
+      break;
+    case ID_TESTS_BLOCK_WEBCAM:
+      test_runner::AllowWebcam = false;
+      break;
+    case ID_TESTS_ALLOW_WEBCAM:
+      test_runner::AllowWebcam = true;
       break;
     case ID_TESTS_OTHER_TESTS:
       RunOtherTests(browser);

@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "include/cef_media_access_handler.h"
 #include "libcef/browser/alloy/alloy_browser_context.h"
 #include "libcef/browser/alloy/browser_platform_delegate_alloy.h"
 #include "libcef/browser/audio_capturer.h"
@@ -52,6 +53,7 @@
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "net/base/net_errors.h"
+#include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "third_party/blink/public/mojom/widget/platform_widget.mojom-test-utils.h"
 #include "ui/events/base_event_utils.h"
 
@@ -1389,24 +1391,156 @@ void AlloyBrowserHostImpl::ResizeDueToAutoResize(content::WebContents* source,
   UpdatePreferredSize(source, new_size);
 }
 
+class CefMediaAccessCallbackImpl : public CefMediaAccessCallback {
+ public:
+  typedef content::MediaResponseCallback CallbackType;
+
+  explicit CefMediaAccessCallbackImpl(
+      const content::MediaStreamRequest& request,
+      int32_t request_permissions,
+      CallbackType&& callback)
+      : callback_(std::move(callback)),
+        request_(request),
+        requested_permissions_(request_permissions) {}
+
+  ~CefMediaAccessCallbackImpl() { Cancel(); }
+  CefMediaAccessCallbackImpl(const CefMediaAccessCallbackImpl&) = delete;
+  CefMediaAccessCallbackImpl& operator=(const CefMediaAccessCallbackImpl&) =
+      delete;
+
+  void Continue(int32_t allowed_permissions) override {
+    if (CEF_CURRENTLY_ON_UIT()) {
+      if (!callback_.is_null()) {
+        RunNow(allowed_permissions);
+      }
+    } else {
+      CEF_POST_TASK(CEF_UIT,
+                    base::BindRepeating(&CefMediaAccessCallbackImpl::RunNow,
+                                        this, allowed_permissions));
+    }
+  }
+
+  void Cancel() override { Continue(0); }
+
+  CallbackType Disconnect() { return std::move(callback_); }
+
+ private:
+  void RunNow(int32_t allowed_permissions) {
+    CEF_REQUIRE_UIT();
+    blink::MediaStreamDevices devices;
+    if (allowed_permissions == 0) {
+      std::move(callback_).Run(
+          devices, blink::mojom::MediaStreamRequestResult::PERMISSION_DENIED,
+          std::unique_ptr<content::MediaStreamUI>());
+    } else {
+      const bool desktop_video_requested =
+          requested_permissions_ & CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE;
+
+      const bool device_audio_allowed =
+          allowed_permissions & CEF_MEDIA_PERMISSION_DEVICE_AUDIO_CAPTURE;
+
+      const bool device_video_allowed =
+          allowed_permissions & CEF_MEDIA_PERMISSION_DEVICE_VIDEO_CAPTURE;
+
+      const bool desktop_audio_allowed =
+          allowed_permissions & CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE;
+
+      const bool desktop_video_allowed =
+          allowed_permissions & CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE;
+
+      if (desktop_video_requested &&
+          (!desktop_video_allowed &&
+           desktop_audio_allowed)) {  // getDisplayMedia must always request
+                                      // video
+
+        LOG(WARNING) << "Response to getDisplayMedia is not allowed to only "
+                        "return Audio";
+
+        allowed_permissions = 0;
+
+      } else if (!desktop_video_requested &&
+                 requested_permissions_ != allowed_permissions) {
+        LOG(WARNING)
+            << "Response to getUserMedia must match requested permissions ("
+            << requested_permissions_ << " vs " << allowed_permissions << ")";
+
+        allowed_permissions = 0;
+
+      } else {
+        // Pick the desired device or fall back to the first available of
+        // the given type.
+        if (device_audio_allowed) {
+          CefMediaCaptureDevicesDispatcher::GetInstance()->GetRequestedDevice(
+              request_.requested_audio_device_id, true, false, &devices);
+        }
+
+        if (device_video_allowed) {
+          CefMediaCaptureDevicesDispatcher::GetInstance()->GetRequestedDevice(
+              request_.requested_video_device_id, false, true, &devices);
+        }
+
+        const bool legacy_screen_audio =
+            (request_.audio_type ==
+             blink::mojom::MediaStreamType::GUM_DESKTOP_AUDIO_CAPTURE);
+
+        const bool legacy_screen_video =
+            (request_.video_type ==
+             blink::mojom::MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE);
+
+        if (desktop_audio_allowed) {
+          devices.push_back(blink::MediaStreamDevice(
+              legacy_screen_audio
+                  ? blink::mojom::MediaStreamType::GUM_DESKTOP_AUDIO_CAPTURE
+                  : blink::mojom::MediaStreamType::DISPLAY_AUDIO_CAPTURE,
+              "loopback", "System Audio"));
+        }
+
+        if (desktop_video_allowed) {
+          content::DesktopMediaID media_id;
+
+          if (request_.requested_video_device_id.empty()) {
+            media_id =
+                content::DesktopMediaID(content::DesktopMediaID::TYPE_SCREEN,
+                                        -1 /* webrtc::kFullDesktopScreenId */);
+
+          } else {
+            media_id = content::DesktopMediaID::Parse(
+                request_.requested_video_device_id);
+          }
+
+          devices.push_back(blink::MediaStreamDevice(
+              legacy_screen_video
+                  ? blink::mojom::MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE
+                  : blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE,
+              media_id.ToString(), "Screen"));
+        }
+      }
+
+      std::move(callback_).Run(
+          devices,
+          devices.empty()
+              ? blink::mojom::MediaStreamRequestResult::INVALID_STATE
+              : blink::mojom::MediaStreamRequestResult::OK,
+          std::unique_ptr<content::MediaStreamUI>());
+    }
+  }
+
+  CallbackType callback_;
+  content::MediaStreamRequest request_;
+  int32_t requested_permissions_;
+  IMPLEMENT_REFCOUNTING(CefMediaAccessCallbackImpl);
+};
+
 void AlloyBrowserHostImpl::RequestMediaAccessPermission(
     content::WebContents* web_contents,
     const content::MediaStreamRequest& request,
     content::MediaResponseCallback callback) {
   CEF_REQUIRE_UIT();
 
+  bool proceed = false;
   blink::MediaStreamDevices devices;
 
-  const base::CommandLine* command_line =
-      base::CommandLine::ForCurrentProcess();
-  if (!command_line->HasSwitch(switches::kEnableMediaStream)) {
-    // Cancel the request.
-    std::move(callback).Run(
-        devices, blink::mojom::MediaStreamRequestResult::PERMISSION_DENIED,
-        std::unique_ptr<content::MediaStreamUI>());
-    return;
-  }
-
+  // determine the devices
   // Based on chrome/browser/media/media_stream_devices_controller.cc
   bool microphone_requested =
       (request.audio_type ==
@@ -1443,8 +1577,78 @@ void AlloyBrowserHostImpl::RequestMediaAccessPermission(
     }
   }
 
-  std::move(callback).Run(devices, blink::mojom::MediaStreamRequestResult::OK,
-                          std::unique_ptr<content::MediaStreamUI>());
+  CefRefPtr<AlloyBrowserHostImpl> browser =
+      AlloyBrowserHostImpl::GetBrowserForContents(web_contents);
+
+  if (browser.get()) {
+    CefRefPtr<CefClient> client = browser->GetClient();
+    if (client.get()) {
+      CefRefPtr<CefMediaAccessHandler> handler =
+          client->GetMediaAccessHandler();
+
+      if (handler.get()) {
+        bool microphone_requested =
+            (request.audio_type ==
+             blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE);
+
+        bool webcam_requested =
+            (request.video_type ==
+             blink::mojom::MediaStreamType::DEVICE_VIDEO_CAPTURE);
+
+        bool screen_audio_requested =
+            (request.audio_type ==
+             blink::mojom::MediaStreamType::GUM_DESKTOP_AUDIO_CAPTURE) ||
+            (request.audio_type ==
+             blink::mojom::MediaStreamType::DISPLAY_AUDIO_CAPTURE);
+
+        bool screen_video_requested =
+            (request.video_type ==
+             blink::mojom::MediaStreamType::GUM_DESKTOP_VIDEO_CAPTURE) ||
+            (request.video_type ==
+             blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE);
+
+        int requested_permissions = CEF_MEDIA_PERMISSION_NONE;
+
+        if (microphone_requested) {
+          requested_permissions |= CEF_MEDIA_PERMISSION_DEVICE_AUDIO_CAPTURE;
+        }
+
+        if (webcam_requested) {
+          requested_permissions |= CEF_MEDIA_PERMISSION_DEVICE_VIDEO_CAPTURE;
+        }
+
+        if (screen_audio_requested) {
+          requested_permissions |= CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE;
+        }
+
+        if (screen_video_requested) {
+          requested_permissions |= CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE;
+        }
+
+        CefRefPtr<CefMediaAccessCallbackImpl> callbackImpl(
+            new CefMediaAccessCallbackImpl(request, requested_permissions,
+                                           std::move(callback)));
+
+        // Notify the handler.
+        CefRefPtr<CefFrame> frame =
+            browser->GetFrame(CefFrameHostImpl::kMainFrameId);
+        proceed = handler->OnRequestMediaAccessPermission(
+            browser.get(), frame, request.security_origin.spec(),
+            requested_permissions, callbackImpl.get());
+        if (!proceed)
+          callback = callbackImpl->Disconnect();
+      }
+    }
+  }
+
+  if (!proceed && !callback.is_null()) {
+    // Disallow media access by default.
+
+    std::move(callback).Run(
+
+        devices, blink::mojom::MediaStreamRequestResult::PERMISSION_DENIED,
+        std::unique_ptr<content::MediaStreamUI>());
+  }
 }
 
 bool AlloyBrowserHostImpl::CheckMediaAccessPermission(

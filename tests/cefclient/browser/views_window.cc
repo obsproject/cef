@@ -89,6 +89,8 @@ void AddTestMenuItems(CefRefPtr<CefMenuModel> test_menu) {
   test_menu->AddItem(ID_TESTS_PRINT_TO_PDF, "Print to PDF");
   test_menu->AddItem(ID_TESTS_MUTE_AUDIO, "Mute Audio");
   test_menu->AddItem(ID_TESTS_UNMUTE_AUDIO, "Unmute Audio");
+  test_menu->AddItem(ID_TESTS_ALLOW_WEBCAM, "Allow Webcam");
+  test_menu->AddItem(ID_TESTS_BLOCK_WEBCAM, "Block Webcam");
   test_menu->AddItem(ID_TESTS_OTHER_TESTS, "Other Tests");
 }
 

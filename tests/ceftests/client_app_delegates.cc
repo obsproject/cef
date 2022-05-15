@@ -22,6 +22,11 @@ void CreateBrowserDelegates(ClientAppBrowser::DelegateSet& delegates) {
                                            delegates);
   CreatePreferenceBrowserTests(delegates);
 
+  // Bring in the media access tests.
+  extern void CreateMediaAccessBrowserTests(ClientAppBrowser::DelegateSet &
+                                            delegates);
+  CreateMediaAccessBrowserTests(delegates);
+
   // Bring in URLRequest tests.
   extern void CreateURLRequestBrowserTests(ClientAppBrowser::DelegateSet &
                                            delegates);
@@ -94,6 +99,11 @@ void RegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) {
   extern void RegisterURLRequestCustomSchemes(
       CefRawPtr<CefSchemeRegistrar> registrar);
   RegisterURLRequestCustomSchemes(registrar);
+
+  // Bring in the media access tests.
+  extern void RegisterMediaCustomSchemes(
+      CefRawPtr<CefSchemeRegistrar> registrar);
+  RegisterMediaCustomSchemes(registrar);
 
   // Bring in the resource request handler tests.
   extern void RegisterResourceRequestHandlerCustomSchemes(
