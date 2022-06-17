@@ -1,0 +1,2621 @@
+From 7ac4a8a5d348238e17d236f382c3d3a05b7cfa47 Mon Sep 17 00:00:00 2001
+From: pkv <pkv@obsproject.com>
+Date: Sun, 5 Jun 2022 03:36:28 +0200
+Subject: [PATCH] Revert "Delete CHROMIUM_image extension"
+
+This reverts commit 56c239dea56ca0dd089ba83c8f1061d381bcc33b.
+---
+ cc/raster/raster_buffer_provider_perftest.cc  |   6 +
+ components/viz/test/test_gles2_interface.cc   |  21 +++
+ components/viz/test/test_gles2_interface.h    |   7 +
+ .../extensions/CHROMIUM/CHROMIUM_image.txt    | 132 ++++++++++++++++++
+ .../CHROMIUM/CHROMIUM_ycbcr_420v_image.txt    |  10 +-
+ .../CHROMIUM/CHROMIUM_ycbcr_422_image.txt     |  16 ++-
+ .../CHROMIUM/CHROMIUM_ycbcr_p010_image.txt    |  10 +-
+ .../CHROMIUM/CHROMIUM_ycrcb_420_image.txt     |  16 ++-
+ gpu/GLES2/gl2chromium_autogen.h               |   6 +
+ gpu/GLES2/gl2extchromium.h                    |  38 +++++
+ gpu/command_buffer/build_gles2_cmd_buffer.py  |  29 ++++
+ .../client/gles2_c_lib_autogen.h              |  44 ++++++
+ .../client/gles2_cmd_helper_autogen.h         |  26 ++++
+ .../client/gles2_implementation.cc            |  89 ++++++++++++
+ .../client/gles2_implementation.h             |   6 +
+ .../client/gles2_implementation_autogen.h     |  15 ++
+ .../gles2_implementation_impl_autogen.h       |  34 +++++
+ .../client/gles2_implementation_unittest.cc   |   1 +
+ .../gles2_implementation_unittest_autogen.h   |  33 +++++
+ .../client/gles2_interface_autogen.h          |  10 ++
+ .../client/gles2_interface_stub_autogen.h     |  10 ++
+ .../gles2_interface_stub_impl_autogen.h       |  15 ++
+ .../gles2_trace_implementation_autogen.h      |  10 ++
+ .../gles2_trace_implementation_impl_autogen.h |  35 +++++
+ gpu/command_buffer/client/gpu_control.h       |   9 ++
+ .../raster_implementation_gles_unittest.cc    |  10 ++
+ .../common/gles2_cmd_format_autogen.h         | 120 ++++++++++++++++
+ .../common/gles2_cmd_format_test_autogen.h    |  41 ++++++
+ .../common/gles2_cmd_ids_autogen.h            |  99 ++++++-------
+ .../gles2_cmd_buffer_functions.txt            |   5 +
+ .../service/gles2_cmd_decoder.cc              | 126 +++++++++++++++++
+ .../service/gles2_cmd_decoder_autogen.h       |  58 ++++++++
+ .../service/gles2_cmd_decoder_passthrough.cc  |  46 ++++++
+ .../service/gles2_cmd_decoder_passthrough.h   |   4 +
+ ..._cmd_decoder_passthrough_doer_prototypes.h |   5 +
+ .../gles2_cmd_decoder_passthrough_doers.cc    |  49 +++++++
+ ...md_decoder_passthrough_handlers_autogen.cc |  48 +++++++
+ .../gles2_cmd_decoder_unittest_base.cc        |  13 ++
+ .../service/gles2_cmd_decoder_unittest_base.h |   1 +
+ gpu/command_buffer/tests/decoder_perftest.cc  |   9 ++
+ gpu/command_buffer/tests/gl_manager.cc        |  63 +++++++++
+ gpu/command_buffer/tests/gl_manager.h         |   4 +
+ gpu/gles2_conform_support/egl/context.cc      |   9 ++
+ gpu/gles2_conform_support/egl/context.h       |   4 +
+ gpu/ipc/client/command_buffer_proxy_impl.cc   |  64 +++++++++
+ gpu/ipc/client/command_buffer_proxy_impl.h    |   4 +
+ gpu/ipc/common/gpu_channel.mojom              |  20 +++
+ gpu/ipc/in_process_command_buffer.cc          | 114 +++++++++++++++
+ gpu/ipc/in_process_command_buffer.h           |  12 ++
+ gpu/ipc/service/command_buffer_stub.cc        |   8 ++
+ gpu/ipc/service/command_buffer_stub.h         |   2 +
+ gpu/ipc/service/gles2_command_buffer_stub.cc  |  62 ++++++++
+ gpu/ipc/service/gles2_command_buffer_stub.h   |   2 +
+ .../gpu_memory_buffer_factory_io_surface.h    |   3 +-
+ ppapi/proxy/ppapi_command_buffer_proxy.cc     |  11 ++
+ ppapi/proxy/ppapi_command_buffer_proxy.h      |   4 +
+ .../gpu/drawing_buffer_test_helpers.h         |  49 ++++++-
+ 57 files changed, 1628 insertions(+), 69 deletions(-)
+ create mode 100644 gpu/GLES2/extensions/CHROMIUM/CHROMIUM_image.txt
+
+diff --git a/cc/raster/raster_buffer_provider_perftest.cc b/cc/raster/raster_buffer_provider_perftest.cc
+index f6c39937b46c6..78cd768d4857a 100644
+--- cc/raster/raster_buffer_provider_perftest.cc
++++ cc/raster/raster_buffer_provider_perftest.cc
+@@ -40,6 +40,12 @@ namespace {
+ 
+ class PerfGLES2Interface : public gpu::gles2::GLES2InterfaceStub {
+   // Overridden from gpu::gles2::GLES2Interface:
++  GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                             GLsizei width,
++                             GLsizei height,
++                             GLenum internalformat) override {
++    return 1u;
++  }
+   void GenBuffers(GLsizei n, GLuint* buffers) override {
+     for (GLsizei i = 0; i < n; ++i)
+       buffers[i] = 1u;
+diff --git a/components/viz/test/test_gles2_interface.cc b/components/viz/test/test_gles2_interface.cc
+index e31685ab32498..7ea3e529f4ca7 100644
+--- components/viz/test/test_gles2_interface.cc
++++ components/viz/test/test_gles2_interface.cc
+@@ -275,6 +275,27 @@ void TestGLES2Interface::PixelStorei(GLenum pname, GLint param) {
+   }
+ }
+ 
++GLuint TestGLES2Interface::CreateImageCHROMIUM(ClientBuffer buffer,
++                                               GLsizei width,
++                                               GLsizei height,
++                                               GLenum internalformat) {
++  DCHECK(internalformat == GL_RGB || internalformat == GL_RGBA ||
++         (test_capabilities_.texture_format_bgra8888 &&
++          internalformat == GL_BGRA_EXT));
++  GLuint image_id = NextImageId();
++  images_.insert(image_id);
++  return image_id;
++}
++
++void TestGLES2Interface::DestroyImageCHROMIUM(GLuint image_id) {
++  RetireImageId(image_id);
++  if (!images_.count(image_id)) {
++    ADD_FAILURE() << "destroyImageCHROMIUM called on unknown image "
++                  << image_id;
++  }
++  images_.erase(image_id);
++}
++
+ void* TestGLES2Interface::MapBufferCHROMIUM(GLuint target, GLenum access) {
+   DCHECK_GT(bound_buffer_.count(target), 0u);
+   DCHECK_GT(buffers_.count(bound_buffer_[target]), 0u);
+diff --git a/components/viz/test/test_gles2_interface.h b/components/viz/test/test_gles2_interface.h
+index d927b0d4f93e5..af21b1f23e84b 100644
+--- components/viz/test/test_gles2_interface.h
++++ components/viz/test/test_gles2_interface.h
+@@ -73,6 +73,12 @@ class TestGLES2Interface : public gpu::gles2::GLES2InterfaceStub {
+ 
+   void PixelStorei(GLenum pname, GLint param) override;
+ 
++  GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                             GLsizei width,
++                             GLsizei height,
++                             GLenum internalformat) override;
++  void DestroyImageCHROMIUM(GLuint image_id) override;
++
+   void* MapBufferCHROMIUM(GLuint target, GLenum access) override;
+   GLboolean UnmapBufferCHROMIUM(GLuint target) override;
+   void BufferData(GLenum target,
+@@ -236,6 +242,7 @@ class TestGLES2Interface : public gpu::gles2::GLES2InterfaceStub {
+   unsigned next_texture_id_ = 1;
+   unsigned next_renderbuffer_id_ = 1;
+   std::unordered_map<unsigned, std::unique_ptr<Buffer>> buffers_;
++  std::unordered_set<unsigned> images_;
+   std::unordered_set<unsigned> textures_;
+   std::unordered_set<unsigned> renderbuffer_set_;
+ 
+diff --git a/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_image.txt b/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_image.txt
+new file mode 100644
+index 0000000000000..0d6a4c46fd662
+--- /dev/null
++++ gpu/GLES2/extensions/CHROMIUM/CHROMIUM_image.txt
+@@ -0,0 +1,132 @@
++Name
++
++    CHROMIUM_image
++
++Name Strings
++
++    GL_CHROMIUM_image
++
++Version
++
++    Last Modifed Date: May 13, 2015
++
++Dependencies
++
++    OpenGL ES 2.0 is required.
++
++    EXT_texture_format_BGRA8888 affects the definition of this extension.
++    ARB_texture_rg affects the definition of this extension.
++
++Overview
++
++    This extension defines a new resource type that is suitable for
++    sharing 2D arrays of image data between client APIs.
++
++Issues
++
++    None
++
++New Tokens
++
++    None
++
++New Procedures and Functions
++
++  GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                             GLsizei width,
++                             GLsizei height,
++                             GLenum internalformat)
++
++    Create an image from <buffer> with width equal to <width> and
++    height equal to <height> and format equal to <internalformat>.
++
++    Returns a unique identifier for the image that could be used in
++    subsequent operations.
++
++    INVALID_VALUE is generated if <width> or <height> is nonpositive.
++
++    INVALID_VALUE is generated if <internalformat> is not one of
++    RED, RGB, RGBA, BGRA_EXT, ATC_RGB_AMD, ATC_RGBA_INTERPOLATED_ALPHA_AMD,
++    COMPRESSED_RGB_S3TC_DXT1_EXT, COMPRESSED_RGBA_S3TC_DXT5_EXT or
++    ETC1_RGB8_OES.
++
++  void DestroyImageCHROMIUM(GLuint image_id)
++
++    Frees the image previously created by a call to CreateImageCHROMIUM.
++
++    INVALID_OPERATION is generated if <image_id> is not a valid image id.
++
++  void BindTexImage2DCHROMIUM(GLenum target, GLint image_id)
++
++    Binds the texture object currently bound to <target> to the image
++    <image_id> previously created by a call to CreateImageCHROMIUM.
++
++    INVALID_OPERATION is generated if no texture is bound to <target>.
++
++    INVALID_OPERATION is generated if <image_id> is not a valid image id.
++
++  void BindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                                GLenum internalformat,
++                                                GLint image_id)
++
++    Behaves exactly like BindTexImage2DCHROMIUM, but forces the
++    texture to use the specified <internalformat> rather than the
++    default one. This function is provided solely as a workaround for
++    driver bugs on some platforms. BindTexImage2DCHROMIUM should be
++    used by almost all users.
++
++  void ReleaseTexImage2DCHROMIUM(GLenum target, GLint image_id)
++
++    Unbinds the texture object bound to <target> from the image
++    <image_id> previously created by a call to CreateImageCHROMIUM. If
++    the texture is not currently bound to the image, has no effect,
++    though may still generate errors.
++
++    INVALID_OPERATION is generated if no texture is bound to <target>.
++
++    INVALID_OPERATION is generated if <image_id> is not a valid image id.
++
++Dependencies on EXT_texture_format_BGRA8888
++
++    If EXT_texture_format_BGRA8888 is not supported:
++     * delete any reference to the BGRA_EXT format.
++
++Dependencies on ARB_texture_rg
++
++    If ARB_texture_rg is not supported:
++     * delete any reference to the RED format.
++
++Dependencies on AMD_compressed_ATC_texture
++
++    If AMD_compressed_ATC_texture is not supported:
++     * delete any reference to the ATC_RGB_AMD and
++       ATC_RGBA_INTERPOLATED_ALPHA_AMD formats.
++
++Dependencies on EXT_texture_compression_s3tc
++
++    If EXT_texture_compression_s3tc is not supported:
++     * delete any reference to the COMPRESSED_RGB_S3TC_DXT1_EXT and
++       COMPRESSED_RGBA_S3TC_DXT5_EXT formats.
++
++Dependencies on OES_compressed_ETC1_RGB8_texture
++
++    If OES_compressed_ETC1_RGB8_texture is not supported:
++     * delete any reference to the ETC1_RGB8_OES format.
++
++Errors
++
++    None.
++
++New State
++
++    None.
++
++Revision History
++
++    5/9/2013    Documented the extension
++    4/30/2014   Moved usage flag to creation function.
++    10/7/2014   Remove map/unmap API.
++    4/6/2015    Add BGRA_EXT format.
++    2/7/2015    Add R8 format.
++    5/13/2015   Add compressed formats.
++    11/5/2015   Change R8 format to RED.
+diff --git a/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_420v_image.txt b/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_420v_image.txt
+index be3525f0a3fe6..db0957b6f78b7 100644
+--- gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_420v_image.txt
++++ gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_420v_image.txt
+@@ -8,17 +8,22 @@ Name Strings
+ 
+ Version
+ 
+-    Last Modified Date: May 3, 2022
++    Last Modifed Date: October 26, 2015
+ 
+ Dependencies
+ 
+     OpenGL ES 2.0 is required.
+ 
++    GL_CHROMIUM_image is required.
++
+ Overview
+ 
+     This extension provides a new internal image format to use when creating an
+     image from underlying '420v' buffers.
+ 
++    This extension is useful in conjunction with CreateImageCHROMIUM to define
++    the format of GpuMemoryBuffer backing the image.
++
+ New Procedures and Functions
+ 
+     None.
+@@ -29,7 +34,7 @@ Errors
+ 
+ New Tokens
+ 
+-    GL_RGB_YCBCR_420V_CHROMIUM    0x78FC
++    Accepted by the <internalformat> parameter of CreateImageCHROMIUM.
+ 
+ New State
+ 
+@@ -38,4 +43,3 @@ New State
+ Revision History
+ 
+     10/26/2015   Documented the extension
+-    5/3/2022     Removed references to GL_CHROMIUM_image.
+diff --git a/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_422_image.txt b/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_422_image.txt
+index 23fddfb500424..2ab489bd2e4b4 100644
+--- gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_422_image.txt
++++ gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_422_image.txt
+@@ -8,16 +8,21 @@ Name Strings
+ 
+ Version
+ 
+-    Last Modified Date: May 3, 2022
++    Last Modifed Date: August 26, 2015
+ 
+ Dependencies
+ 
+     OpenGL ES 2.0 is required.
+ 
++    GL_CHROMIUM_image is required.
++
+ Overview
+ 
+-    This extension provides a new internal image format to use when creating an
+-    image from underlying '2vuy' buffers.
++    This extension provides a new internal image format to use when creating an 
++    image from underlying '2vuy' buffers. 
++
++    This extension is useful in conjunction with CreateImageCHROMIUM to define
++    the format of GpuMemoryBuffer backing the image.
+ 
+ New Procedures and Functions
+ 
+@@ -28,8 +33,8 @@ Errors
+     None.
+ 
+ New Tokens
+-
+-    GL_RGB_YCBCR_422_CHROMIUM    0x78FB
++    
++    Accepted by the <internalformat> parameter of CreateImageCHROMIUM.
+ 
+ New State
+ 
+@@ -38,4 +43,3 @@ New State
+ Revision History
+ 
+     8/26/2015   Documented the extension
+-    5/3/2022    Removed references to GL_CHROMIUM_image.
+diff --git a/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_p010_image.txt b/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_p010_image.txt
+index f8883b4a85a98..2d4045437697a 100644
+--- gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_p010_image.txt
++++ gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycbcr_p010_image.txt
+@@ -8,17 +8,22 @@ Name Strings
+ 
+ Version
+ 
+-    Last Modified Date: May 3, 2022
++    Last Modified Date: June 12, 2019
+ 
+ Dependencies
+ 
+     OpenGL ES 2.0 is required.
+ 
++    GL_CHROMIUM_image is required.
++
+ Overview
+ 
+     This extension provides a new internal image format to use when creating an
+     image from underlying p010 buffers.
+ 
++    This extension is useful in conjunction with CreateImageCHROMIUM to define
++    the format of GpuMemoryBuffer backing the image.
++
+ New Procedures and Functions
+ 
+     None.
+@@ -29,7 +34,7 @@ Errors
+ 
+ New Tokens
+ 
+-    GL_RGB_YCBCR_P010_CHROMIUM    0x78FD
++    Accepted by the <internalformat> parameter of CreateImageCHROMIUM.
+ 
+ New State
+ 
+@@ -38,4 +43,3 @@ New State
+ Revision History
+ 
+     06/12/2019   Documented the extension
+-    5/3/2022     Removed references to GL_CHROMIUM_image.
+diff --git a/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycrcb_420_image.txt b/gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycrcb_420_image.txt
+index b8f44524cb9b7..c87b5e031cb78 100644
+--- gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycrcb_420_image.txt
++++ gpu/GLES2/extensions/CHROMIUM/CHROMIUM_ycrcb_420_image.txt
+@@ -8,16 +8,21 @@ Name Strings
+ 
+ Version
+ 
+-    Last Modified Date: May 3, 2022
++    Last Modifed Date: April 10, 2015
+ 
+ Dependencies
+ 
+     OpenGL ES 2.0 is required.
+ 
++    GL_CHROMIUM_image is required.
++
+ Overview
+ 
+-    This extension provides a new internal image format to use when creating an
+-    image from underlying YV12 buffers with YVU components.
++    This extension provides a new internal image format to use when creating an 
++    image from underlying YV12 buffers with YVU components. 
++
++    This extension is useful in conjunction with CreateImageCHROMIUM to define
++    the format of GpuMemoryBuffer backing the image.
+ 
+ New Procedures and Functions
+ 
+@@ -28,8 +33,8 @@ Errors
+     None.
+ 
+ New Tokens
+-
+-    GL_RGB_YCRCB_420_CHROMIUM    0x78FA
++    
++    Accepted by the <internalformat> parameter of CreateImageCHROMIUM.
+ 
+ New State
+ 
+@@ -38,4 +43,3 @@ New State
+ Revision History
+ 
+     4/10/2015   Documented the extension
+-    5/3/2022    Removed references to GL_CHROMIUM_image.
+diff --git a/gpu/GLES2/gl2chromium_autogen.h b/gpu/GLES2/gl2chromium_autogen.h
+index 0e2e2a531d2c8..b4ee5a07f6c34 100644
+--- gpu/GLES2/gl2chromium_autogen.h
++++ gpu/GLES2/gl2chromium_autogen.h
+@@ -312,6 +312,8 @@
+ #define glGetTransformFeedbackVaryingsCHROMIUM \
+   GLES2_GET_FUN(GetTransformFeedbackVaryingsCHROMIUM)
+ #define glGetUniformsES3CHROMIUM GLES2_GET_FUN(GetUniformsES3CHROMIUM)
++#define glCreateImageCHROMIUM GLES2_GET_FUN(CreateImageCHROMIUM)
++#define glDestroyImageCHROMIUM GLES2_GET_FUN(DestroyImageCHROMIUM)
+ #define glDescheduleUntilFinishedCHROMIUM \
+   GLES2_GET_FUN(DescheduleUntilFinishedCHROMIUM)
+ #define glGetTranslatedShaderSourceANGLE \
+@@ -331,6 +333,10 @@
+ #define glCreateAndConsumeTextureCHROMIUM \
+   GLES2_GET_FUN(CreateAndConsumeTextureCHROMIUM)
+ #define glBindUniformLocationCHROMIUM GLES2_GET_FUN(BindUniformLocationCHROMIUM)
++#define glBindTexImage2DCHROMIUM GLES2_GET_FUN(BindTexImage2DCHROMIUM)
++#define glBindTexImage2DWithInternalformatCHROMIUM \
++  GLES2_GET_FUN(BindTexImage2DWithInternalformatCHROMIUM)
++#define glReleaseTexImage2DCHROMIUM GLES2_GET_FUN(ReleaseTexImage2DCHROMIUM)
+ #define glTraceBeginCHROMIUM GLES2_GET_FUN(TraceBeginCHROMIUM)
+ #define glTraceEndCHROMIUM GLES2_GET_FUN(TraceEndCHROMIUM)
+ #define glDiscardFramebufferEXT GLES2_GET_FUN(DiscardFramebufferEXT)
+diff --git a/gpu/GLES2/gl2extchromium.h b/gpu/GLES2/gl2extchromium.h
+index 005e180edf383..e7087e6261ab0 100644
+--- gpu/GLES2/gl2extchromium.h
++++ gpu/GLES2/gl2extchromium.h
+@@ -63,6 +63,44 @@ typedef GLboolean (GL_APIENTRY PFNGLUNMAPBUFFERCHROMIUM) (GLuint target);
+ #endif
+ #endif  /* GL_CHROMIUM_pixel_transfer_buffer_object */
+ 
++/* GL_CHROMIUM_image */
++#ifndef GL_CHROMIUM_image
++#define GL_CHROMIUM_image 1
++
++typedef struct _ClientBuffer* ClientBuffer;
++
++#ifdef GL_GLEXT_PROTOTYPES
++GL_APICALL GLuint GL_APIENTRY glCreateImageCHROMIUM(ClientBuffer buffer,
++                                                    GLsizei width,
++                                                    GLsizei height,
++                                                    GLenum internalformat);
++GL_APICALL void GL_APIENTRY glDestroyImageCHROMIUM(GLuint image_id);
++GL_APICALL void GL_APIENTRY glBindTexImage2DCHROMIUM(GLenum target,
++                                                     GLint imageId);
++GL_APICALL void GL_APIENTRY
++glBindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                           GLenum internalformat,
++                                           GLint imageId);
++GL_APICALL void GL_APIENTRY glReleaseTexImage2DCHROMIUM(GLenum target,
++                                                        GLint imageId);
++#endif
++typedef GLuint(GL_APIENTRYP PFNGLCREATEIMAGECHROMIUMPROC)(
++    ClientBuffer buffer,
++    GLsizei width,
++    GLsizei height,
++    GLenum internalformat);
++typedef void (
++    GL_APIENTRYP PFNGLDESTROYIMAGECHROMIUMPROC)(GLuint image_id);
++typedef void(GL_APIENTRYP PFNGLBINDTEXIMAGE2DCHROMIUMPROC)(GLenum target,
++                                                           GLint imageId);
++typedef void(GL_APIENTRYP PFNGLBINDTEXIMAGE2DWITHINTERNALFORMATCHROMIUMPROC)(
++    GLenum target,
++    GLenum internalformat,
++    GLint imageId);
++typedef void(GL_APIENTRYP PFNGLRELEASETEXIMAGE2DCHROMIUMPROC)(GLenum target,
++                                                              GLint imageId);
++#endif  /* GL_CHROMIUM_image */
++
+ #ifndef GL_RGB_YCRCB_420_CHROMIUM
+ #define GL_RGB_YCRCB_420_CHROMIUM 0x78FA
+ #endif
+diff --git a/gpu/command_buffer/build_gles2_cmd_buffer.py b/gpu/command_buffer/build_gles2_cmd_buffer.py
+index 100f8669f7b5c..92e68825223bd 100755
+--- gpu/command_buffer/build_gles2_cmd_buffer.py
++++ gpu/command_buffer/build_gles2_cmd_buffer.py
+@@ -1952,6 +1952,20 @@ _FUNCTION_INFO = {
+     'es3': True,
+     'trace_level': 1,
+   },
++  'CreateImageCHROMIUM': {
++    'type': 'NoCommand',
++    'cmd_args':
++        'ClientBuffer buffer, GLsizei width, GLsizei height, '
++        'GLenum internalformat',
++    'result': ['GLuint'],
++    'extension': "CHROMIUM_image",
++    'trace_level': 1,
++  },
++  'DestroyImageCHROMIUM': {
++    'type': 'NoCommand',
++    'extension': "CHROMIUM_image",
++    'trace_level': 1,
++  },
+   'DescheduleUntilFinishedCHROMIUM': {
+     'type': 'Custom',
+     'decoder_func': 'DoDescheduleUntilFinishedCHROMIUM',
+@@ -3890,6 +3904,21 @@ _FUNCTION_INFO = {
+     'unit_test': False,
+     'pepper_interface': 'VertexArrayObject',
+   },
++  'BindTexImage2DCHROMIUM': {
++    'decoder_func': 'DoBindTexImage2DCHROMIUM',
++    'unit_test': False,
++    'extension': "CHROMIUM_image",
++  },
++  'BindTexImage2DWithInternalformatCHROMIUM': {
++    'decoder_func': 'DoBindTexImage2DWithInternalformatCHROMIUM',
++    'unit_test': False,
++    'extension': "CHROMIUM_image",
++  },
++  'ReleaseTexImage2DCHROMIUM': {
++    'decoder_func': 'DoReleaseTexImage2DCHROMIUM',
++    'unit_test': False,
++    'extension': "CHROMIUM_image",
++  },
+   'ShallowFinishCHROMIUM': {
+     'type': 'NoCommand',
+     'extension': 'CHROMIUM_ordering_barrier',
+diff --git a/gpu/command_buffer/client/gles2_c_lib_autogen.h b/gpu/command_buffer/client/gles2_c_lib_autogen.h
+index 32753b49ab17a..128eb8200f11e 100644
+--- gpu/command_buffer/client/gles2_c_lib_autogen.h
++++ gpu/command_buffer/client/gles2_c_lib_autogen.h
+@@ -1451,6 +1451,16 @@ void GL_APIENTRY GLES2GetUniformsES3CHROMIUM(GLuint program,
+                                              void* info) {
+   gles2::GetGLContext()->GetUniformsES3CHROMIUM(program, bufsize, size, info);
+ }
++GLuint GL_APIENTRY GLES2CreateImageCHROMIUM(ClientBuffer buffer,
++                                            GLsizei width,
++                                            GLsizei height,
++                                            GLenum internalformat) {
++  return gles2::GetGLContext()->CreateImageCHROMIUM(buffer, width, height,
++                                                    internalformat);
++}
++void GL_APIENTRY GLES2DestroyImageCHROMIUM(GLuint image_id) {
++  gles2::GetGLContext()->DestroyImageCHROMIUM(image_id);
++}
+ void GL_APIENTRY GLES2DescheduleUntilFinishedCHROMIUM() {
+   gles2::GetGLContext()->DescheduleUntilFinishedCHROMIUM();
+ }
+@@ -1555,6 +1565,19 @@ void GL_APIENTRY GLES2BindUniformLocationCHROMIUM(GLuint program,
+                                                   const char* name) {
+   gles2::GetGLContext()->BindUniformLocationCHROMIUM(program, location, name);
+ }
++void GL_APIENTRY GLES2BindTexImage2DCHROMIUM(GLenum target, GLint imageId) {
++  gles2::GetGLContext()->BindTexImage2DCHROMIUM(target, imageId);
++}
++void GL_APIENTRY
++GLES2BindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                              GLenum internalformat,
++                                              GLint imageId) {
++  gles2::GetGLContext()->BindTexImage2DWithInternalformatCHROMIUM(
++      target, internalformat, imageId);
++}
++void GL_APIENTRY GLES2ReleaseTexImage2DCHROMIUM(GLenum target, GLint imageId) {
++  gles2::GetGLContext()->ReleaseTexImage2DCHROMIUM(target, imageId);
++}
+ void GL_APIENTRY GLES2TraceBeginCHROMIUM(const char* category_name,
+                                          const char* trace_name) {
+   gles2::GetGLContext()->TraceBeginCHROMIUM(category_name, trace_name);
+@@ -2982,6 +3005,14 @@ extern const NameToFunc g_gles2_function_table[] = {
+         "glGetUniformsES3CHROMIUM",
+         reinterpret_cast<GLES2FunctionPointer>(glGetUniformsES3CHROMIUM),
+     },
++    {
++        "glCreateImageCHROMIUM",
++        reinterpret_cast<GLES2FunctionPointer>(glCreateImageCHROMIUM),
++    },
++    {
++        "glDestroyImageCHROMIUM",
++        reinterpret_cast<GLES2FunctionPointer>(glDestroyImageCHROMIUM),
++    },
+     {
+         "glDescheduleUntilFinishedCHROMIUM",
+         reinterpret_cast<GLES2FunctionPointer>(
+@@ -3039,6 +3070,19 @@ extern const NameToFunc g_gles2_function_table[] = {
+         "glBindUniformLocationCHROMIUM",
+         reinterpret_cast<GLES2FunctionPointer>(glBindUniformLocationCHROMIUM),
+     },
++    {
++        "glBindTexImage2DCHROMIUM",
++        reinterpret_cast<GLES2FunctionPointer>(glBindTexImage2DCHROMIUM),
++    },
++    {
++        "glBindTexImage2DWithInternalformatCHROMIUM",
++        reinterpret_cast<GLES2FunctionPointer>(
++            glBindTexImage2DWithInternalformatCHROMIUM),
++    },
++    {
++        "glReleaseTexImage2DCHROMIUM",
++        reinterpret_cast<GLES2FunctionPointer>(glReleaseTexImage2DCHROMIUM),
++    },
+     {
+         "glTraceBeginCHROMIUM",
+         reinterpret_cast<GLES2FunctionPointer>(glTraceBeginCHROMIUM),
+diff --git a/gpu/command_buffer/client/gles2_cmd_helper_autogen.h b/gpu/command_buffer/client/gles2_cmd_helper_autogen.h
+index 11e22a528c41c..390b85f0e7ca8 100644
+--- gpu/command_buffer/client/gles2_cmd_helper_autogen.h
++++ gpu/command_buffer/client/gles2_cmd_helper_autogen.h
+@@ -2936,6 +2936,32 @@ void BindUniformLocationCHROMIUMBucket(GLuint program,
+   }
+ }
+ 
++void BindTexImage2DCHROMIUM(GLenum target, GLint imageId) {
++  gles2::cmds::BindTexImage2DCHROMIUM* c =
++      GetCmdSpace<gles2::cmds::BindTexImage2DCHROMIUM>();
++  if (c) {
++    c->Init(target, imageId);
++  }
++}
++
++void BindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                              GLenum internalformat,
++                                              GLint imageId) {
++  gles2::cmds::BindTexImage2DWithInternalformatCHROMIUM* c =
++      GetCmdSpace<gles2::cmds::BindTexImage2DWithInternalformatCHROMIUM>();
++  if (c) {
++    c->Init(target, internalformat, imageId);
++  }
++}
++
++void ReleaseTexImage2DCHROMIUM(GLenum target, GLint imageId) {
++  gles2::cmds::ReleaseTexImage2DCHROMIUM* c =
++      GetCmdSpace<gles2::cmds::ReleaseTexImage2DCHROMIUM>();
++  if (c) {
++    c->Init(target, imageId);
++  }
++}
++
+ void TraceBeginCHROMIUM(GLuint category_bucket_id, GLuint name_bucket_id) {
+   gles2::cmds::TraceBeginCHROMIUM* c =
+       GetCmdSpace<gles2::cmds::TraceBeginCHROMIUM>();
+diff --git a/gpu/command_buffer/client/gles2_implementation.cc b/gpu/command_buffer/client/gles2_implementation.cc
+index 6906b17f47edf..7c33d18041938 100644
+--- gpu/command_buffer/client/gles2_implementation.cc
++++ gpu/command_buffer/client/gles2_implementation.cc
+@@ -4476,6 +4476,7 @@ const GLubyte* GLES2Implementation::GetStringHelper(GLenum name) {
+     // Adds extensions implemented on client side only.
+     if (name == GL_EXTENSIONS) {
+       str += std::string(str.empty() ? "" : " ") +
++             "GL_CHROMIUM_image "
+              "GL_CHROMIUM_map_sub "
+              "GL_CHROMIUM_ordering_barrier "
+              "GL_CHROMIUM_sync_point "
+@@ -7189,6 +7190,94 @@ bool GLES2Implementation::CanDecodeWithHardwareAcceleration(
+   return false;
+ }
+ 
++namespace {
++
++bool CreateImageValidInternalFormat(GLenum internalformat,
++                                    const Capabilities& capabilities) {
++  switch (internalformat) {
++    case GL_R16_EXT:
++      return capabilities.texture_norm16;
++    case GL_RGB10_A2_EXT:
++      return capabilities.image_ar30 || capabilities.image_ab30;
++    case GL_RGB_YCBCR_P010_CHROMIUM:
++      return capabilities.image_ycbcr_p010;
++    case GL_RED:
++    case GL_RG_EXT:
++    case GL_RGB:
++    case GL_RGBA:
++    case GL_RGB_YCBCR_422_CHROMIUM:
++    case GL_RGB_YCBCR_420V_CHROMIUM:
++    case GL_RGB_YCRCB_420_CHROMIUM:
++    case GL_BGRA_EXT:
++      return true;
++    default:
++      return false;
++  }
++}
++
++}  // namespace
++
++GLuint GLES2Implementation::CreateImageCHROMIUMHelper(ClientBuffer buffer,
++                                                      GLsizei width,
++                                                      GLsizei height,
++                                                      GLenum internalformat) {
++  if (width <= 0) {
++    SetGLError(GL_INVALID_VALUE, "glCreateImageCHROMIUM", "width <= 0");
++    return 0;
++  }
++
++  if (height <= 0) {
++    SetGLError(GL_INVALID_VALUE, "glCreateImageCHROMIUM", "height <= 0");
++    return 0;
++  }
++
++  if (!CreateImageValidInternalFormat(internalformat, capabilities_)) {
++    SetGLError(GL_INVALID_VALUE, "glCreateImageCHROMIUM", "invalid format");
++    return 0;
++  }
++
++  // CreateImage creates a fence sync so we must flush first to ensure all
++  // previously created fence syncs are flushed first.
++  FlushHelper();
++
++  int32_t image_id = gpu_control_->CreateImage(buffer, width, height);
++  if (image_id < 0) {
++    SetGLError(GL_OUT_OF_MEMORY, "glCreateImageCHROMIUM", "image_id < 0");
++    return 0;
++  }
++  return image_id;
++}
++
++GLuint GLES2Implementation::CreateImageCHROMIUM(ClientBuffer buffer,
++                                                GLsizei width,
++                                                GLsizei height,
++                                                GLenum internalformat) {
++  GPU_CLIENT_SINGLE_THREAD_CHECK();
++  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glCreateImageCHROMIUM(" << width
++                     << ", " << height << ", "
++                     << GLES2Util::GetStringImageInternalFormat(internalformat)
++                     << ")");
++  GLuint image_id =
++      CreateImageCHROMIUMHelper(buffer, width, height, internalformat);
++  CheckGLError();
++  return image_id;
++}
++
++void GLES2Implementation::DestroyImageCHROMIUMHelper(GLuint image_id) {
++  // Flush the command stream to make sure all pending commands
++  // that may refer to the image_id are executed on the service side.
++  helper_->CommandBufferHelper::Flush();
++  gpu_control_->DestroyImage(image_id);
++}
++
++void GLES2Implementation::DestroyImageCHROMIUM(GLuint image_id) {
++  GPU_CLIENT_SINGLE_THREAD_CHECK();
++  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glDestroyImageCHROMIUM("
++                     << image_id << ")");
++  DestroyImageCHROMIUMHelper(image_id);
++  CheckGLError();
++}
++
+ bool GLES2Implementation::ValidateSize(const char* func, GLsizeiptr size) {
+   if (size < 0) {
+     SetGLError(GL_INVALID_VALUE, func, "size < 0");
+diff --git a/gpu/command_buffer/client/gles2_implementation.h b/gpu/command_buffer/client/gles2_implementation.h
+index 86f8eb42d4e5b..b8c4ff597882a 100644
+--- gpu/command_buffer/client/gles2_implementation.h
++++ gpu/command_buffer/client/gles2_implementation.h
+@@ -549,6 +549,12 @@ class GLES2_IMPL_EXPORT GLES2Implementation : public GLES2Interface,
+       const GLuint* baseInstances,
+       GLsizei drawcount);
+ 
++  GLuint CreateImageCHROMIUMHelper(ClientBuffer buffer,
++                                   GLsizei width,
++                                   GLsizei height,
++                                   GLenum internalformat);
++  void DestroyImageCHROMIUMHelper(GLuint image_id);
++
+   // Helper for GetVertexAttrib
+   bool GetVertexAttribHelper(GLuint index, GLenum pname, uint32_t* param);
+ 
+diff --git a/gpu/command_buffer/client/gles2_implementation_autogen.h b/gpu/command_buffer/client/gles2_implementation_autogen.h
+index 8e1aa82a1d448..f2ec6d8233dbd 100644
+--- gpu/command_buffer/client/gles2_implementation_autogen.h
++++ gpu/command_buffer/client/gles2_implementation_autogen.h
+@@ -1021,6 +1021,13 @@ void GetUniformsES3CHROMIUM(GLuint program,
+                             GLsizei* size,
+                             void* info) override;
+ 
++GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                           GLsizei width,
++                           GLsizei height,
++                           GLenum internalformat) override;
++
++void DestroyImageCHROMIUM(GLuint image_id) override;
++
+ void DescheduleUntilFinishedCHROMIUM() override;
+ 
+ void GetTranslatedShaderSourceANGLE(GLuint shader,
+@@ -1097,6 +1104,14 @@ void BindUniformLocationCHROMIUM(GLuint program,
+                                  GLint location,
+                                  const char* name) override;
+ 
++void BindTexImage2DCHROMIUM(GLenum target, GLint imageId) override;
++
++void BindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                              GLenum internalformat,
++                                              GLint imageId) override;
++
++void ReleaseTexImage2DCHROMIUM(GLenum target, GLint imageId) override;
++
+ void TraceBeginCHROMIUM(const char* category_name,
+                         const char* trace_name) override;
+ 
+diff --git a/gpu/command_buffer/client/gles2_implementation_impl_autogen.h b/gpu/command_buffer/client/gles2_implementation_impl_autogen.h
+index 61de0b6562167..9bff1f350b473 100644
+--- gpu/command_buffer/client/gles2_implementation_impl_autogen.h
++++ gpu/command_buffer/client/gles2_implementation_impl_autogen.h
+@@ -3326,6 +3326,40 @@ void GLES2Implementation::CopySubTextureCHROMIUM(
+   CheckGLError();
+ }
+ 
++void GLES2Implementation::BindTexImage2DCHROMIUM(GLenum target, GLint imageId) {
++  GPU_CLIENT_SINGLE_THREAD_CHECK();
++  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glBindTexImage2DCHROMIUM("
++                     << GLES2Util::GetStringTextureBindTarget(target) << ", "
++                     << imageId << ")");
++  helper_->BindTexImage2DCHROMIUM(target, imageId);
++  CheckGLError();
++}
++
++void GLES2Implementation::BindTexImage2DWithInternalformatCHROMIUM(
++    GLenum target,
++    GLenum internalformat,
++    GLint imageId) {
++  GPU_CLIENT_SINGLE_THREAD_CHECK();
++  GPU_CLIENT_LOG(
++      "[" << GetLogPrefix() << "] glBindTexImage2DWithInternalformatCHROMIUM("
++          << GLES2Util::GetStringTextureBindTarget(target) << ", "
++          << GLES2Util::GetStringTextureInternalFormat(internalformat) << ", "
++          << imageId << ")");
++  helper_->BindTexImage2DWithInternalformatCHROMIUM(target, internalformat,
++                                                    imageId);
++  CheckGLError();
++}
++
++void GLES2Implementation::ReleaseTexImage2DCHROMIUM(GLenum target,
++                                                    GLint imageId) {
++  GPU_CLIENT_SINGLE_THREAD_CHECK();
++  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glReleaseTexImage2DCHROMIUM("
++                     << GLES2Util::GetStringTextureBindTarget(target) << ", "
++                     << imageId << ")");
++  helper_->ReleaseTexImage2DCHROMIUM(target, imageId);
++  CheckGLError();
++}
++
+ void GLES2Implementation::DiscardFramebufferEXT(GLenum target,
+                                                 GLsizei count,
+                                                 const GLenum* attachments) {
+diff --git a/gpu/command_buffer/client/gles2_implementation_unittest.cc b/gpu/command_buffer/client/gles2_implementation_unittest.cc
+index 38b4539f9fd1c..c182abcba806c 100644
+--- gpu/command_buffer/client/gles2_implementation_unittest.cc
++++ gpu/command_buffer/client/gles2_implementation_unittest.cc
+@@ -3002,6 +3002,7 @@ TEST_F(GLES2ImplementationTest, GetString) {
+   // GL_CHROMIUM_map_sub is hard coded into GLES2Implementation.
+   const char* expected_str =
+       "foobar "
++      "GL_CHROMIUM_image "
+       "GL_CHROMIUM_map_sub "
+       "GL_CHROMIUM_ordering_barrier "
+       "GL_CHROMIUM_sync_point "
+diff --git a/gpu/command_buffer/client/gles2_implementation_unittest_autogen.h b/gpu/command_buffer/client/gles2_implementation_unittest_autogen.h
+index d53173a4c9e2f..ea92758bb279d 100644
+--- gpu/command_buffer/client/gles2_implementation_unittest_autogen.h
++++ gpu/command_buffer/client/gles2_implementation_unittest_autogen.h
+@@ -2874,6 +2874,39 @@ TEST_F(GLES2ImplementationTest, VertexAttribDivisorANGLE) {
+   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+ }
+ 
++TEST_F(GLES2ImplementationTest, BindTexImage2DCHROMIUM) {
++  struct Cmds {
++    cmds::BindTexImage2DCHROMIUM cmd;
++  };
++  Cmds expected;
++  expected.cmd.Init(GL_TEXTURE_2D, 2);
++
++  gl_->BindTexImage2DCHROMIUM(GL_TEXTURE_2D, 2);
++  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
++}
++
++TEST_F(GLES2ImplementationTest, BindTexImage2DWithInternalformatCHROMIUM) {
++  struct Cmds {
++    cmds::BindTexImage2DWithInternalformatCHROMIUM cmd;
++  };
++  Cmds expected;
++  expected.cmd.Init(GL_TEXTURE_2D, GL_ALPHA, 3);
++
++  gl_->BindTexImage2DWithInternalformatCHROMIUM(GL_TEXTURE_2D, GL_ALPHA, 3);
++  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
++}
++
++TEST_F(GLES2ImplementationTest, ReleaseTexImage2DCHROMIUM) {
++  struct Cmds {
++    cmds::ReleaseTexImage2DCHROMIUM cmd;
++  };
++  Cmds expected;
++  expected.cmd.Init(GL_TEXTURE_2D, 2);
++
++  gl_->ReleaseTexImage2DCHROMIUM(GL_TEXTURE_2D, 2);
++  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
++}
++
+ TEST_F(GLES2ImplementationTest, DiscardFramebufferEXT) {
+   GLenum data[2][1] = {{0}};
+   struct Cmds {
+diff --git a/gpu/command_buffer/client/gles2_interface_autogen.h b/gpu/command_buffer/client/gles2_interface_autogen.h
+index e87789500f28a..c35e07b4644f1 100644
+--- gpu/command_buffer/client/gles2_interface_autogen.h
++++ gpu/command_buffer/client/gles2_interface_autogen.h
+@@ -757,6 +757,11 @@ virtual void GetUniformsES3CHROMIUM(GLuint program,
+                                     GLsizei bufsize,
+                                     GLsizei* size,
+                                     void* info) = 0;
++virtual GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                                   GLsizei width,
++                                   GLsizei height,
++                                   GLenum internalformat) = 0;
++virtual void DestroyImageCHROMIUM(GLuint image_id) = 0;
+ virtual void DescheduleUntilFinishedCHROMIUM() = 0;
+ virtual void GetTranslatedShaderSourceANGLE(GLuint shader,
+                                             GLsizei bufsize,
+@@ -820,6 +825,11 @@ virtual GLuint CreateAndConsumeTextureCHROMIUM(const GLbyte* mailbox) = 0;
+ virtual void BindUniformLocationCHROMIUM(GLuint program,
+                                          GLint location,
+                                          const char* name) = 0;
++virtual void BindTexImage2DCHROMIUM(GLenum target, GLint imageId) = 0;
++virtual void BindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                                      GLenum internalformat,
++                                                      GLint imageId) = 0;
++virtual void ReleaseTexImage2DCHROMIUM(GLenum target, GLint imageId) = 0;
+ virtual void TraceBeginCHROMIUM(const char* category_name,
+                                 const char* trace_name) = 0;
+ virtual void TraceEndCHROMIUM() = 0;
+diff --git a/gpu/command_buffer/client/gles2_interface_stub_autogen.h b/gpu/command_buffer/client/gles2_interface_stub_autogen.h
+index 8350fc4e22ea3..fa3798f519d34 100644
+--- gpu/command_buffer/client/gles2_interface_stub_autogen.h
++++ gpu/command_buffer/client/gles2_interface_stub_autogen.h
+@@ -733,6 +733,11 @@ void GetUniformsES3CHROMIUM(GLuint program,
+                             GLsizei bufsize,
+                             GLsizei* size,
+                             void* info) override;
++GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                           GLsizei width,
++                           GLsizei height,
++                           GLenum internalformat) override;
++void DestroyImageCHROMIUM(GLuint image_id) override;
+ void DescheduleUntilFinishedCHROMIUM() override;
+ void GetTranslatedShaderSourceANGLE(GLuint shader,
+                                     GLsizei bufsize,
+@@ -796,6 +801,11 @@ GLuint CreateAndConsumeTextureCHROMIUM(const GLbyte* mailbox) override;
+ void BindUniformLocationCHROMIUM(GLuint program,
+                                  GLint location,
+                                  const char* name) override;
++void BindTexImage2DCHROMIUM(GLenum target, GLint imageId) override;
++void BindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                              GLenum internalformat,
++                                              GLint imageId) override;
++void ReleaseTexImage2DCHROMIUM(GLenum target, GLint imageId) override;
+ void TraceBeginCHROMIUM(const char* category_name,
+                         const char* trace_name) override;
+ void TraceEndCHROMIUM() override;
+diff --git a/gpu/command_buffer/client/gles2_interface_stub_impl_autogen.h b/gpu/command_buffer/client/gles2_interface_stub_impl_autogen.h
+index d0188901c0144..76fb3d2f1f8a7 100644
+--- gpu/command_buffer/client/gles2_interface_stub_impl_autogen.h
++++ gpu/command_buffer/client/gles2_interface_stub_impl_autogen.h
+@@ -991,6 +991,13 @@ void GLES2InterfaceStub::GetUniformsES3CHROMIUM(GLuint /* program */,
+                                                 GLsizei /* bufsize */,
+                                                 GLsizei* /* size */,
+                                                 void* /* info */) {}
++GLuint GLES2InterfaceStub::CreateImageCHROMIUM(ClientBuffer /* buffer */,
++                                               GLsizei /* width */,
++                                               GLsizei /* height */,
++                                               GLenum /* internalformat */) {
++  return 0;
++}
++void GLES2InterfaceStub::DestroyImageCHROMIUM(GLuint /* image_id */) {}
+ void GLES2InterfaceStub::DescheduleUntilFinishedCHROMIUM() {}
+ void GLES2InterfaceStub::GetTranslatedShaderSourceANGLE(GLuint /* shader */,
+                                                         GLsizei /* bufsize */,
+@@ -1062,6 +1069,14 @@ GLuint GLES2InterfaceStub::CreateAndConsumeTextureCHROMIUM(
+ void GLES2InterfaceStub::BindUniformLocationCHROMIUM(GLuint /* program */,
+                                                      GLint /* location */,
+                                                      const char* /* name */) {}
++void GLES2InterfaceStub::BindTexImage2DCHROMIUM(GLenum /* target */,
++                                                GLint /* imageId */) {}
++void GLES2InterfaceStub::BindTexImage2DWithInternalformatCHROMIUM(
++    GLenum /* target */,
++    GLenum /* internalformat */,
++    GLint /* imageId */) {}
++void GLES2InterfaceStub::ReleaseTexImage2DCHROMIUM(GLenum /* target */,
++                                                   GLint /* imageId */) {}
+ void GLES2InterfaceStub::TraceBeginCHROMIUM(const char* /* category_name */,
+                                             const char* /* trace_name */) {}
+ void GLES2InterfaceStub::TraceEndCHROMIUM() {}
+diff --git a/gpu/command_buffer/client/gles2_trace_implementation_autogen.h b/gpu/command_buffer/client/gles2_trace_implementation_autogen.h
+index 45ddce1c90ebc..a8a7a9193c44e 100644
+--- gpu/command_buffer/client/gles2_trace_implementation_autogen.h
++++ gpu/command_buffer/client/gles2_trace_implementation_autogen.h
+@@ -733,6 +733,11 @@ void GetUniformsES3CHROMIUM(GLuint program,
+                             GLsizei bufsize,
+                             GLsizei* size,
+                             void* info) override;
++GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                           GLsizei width,
++                           GLsizei height,
++                           GLenum internalformat) override;
++void DestroyImageCHROMIUM(GLuint image_id) override;
+ void DescheduleUntilFinishedCHROMIUM() override;
+ void GetTranslatedShaderSourceANGLE(GLuint shader,
+                                     GLsizei bufsize,
+@@ -796,6 +801,11 @@ GLuint CreateAndConsumeTextureCHROMIUM(const GLbyte* mailbox) override;
+ void BindUniformLocationCHROMIUM(GLuint program,
+                                  GLint location,
+                                  const char* name) override;
++void BindTexImage2DCHROMIUM(GLenum target, GLint imageId) override;
++void BindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                              GLenum internalformat,
++                                              GLint imageId) override;
++void ReleaseTexImage2DCHROMIUM(GLenum target, GLint imageId) override;
+ void TraceBeginCHROMIUM(const char* category_name,
+                         const char* trace_name) override;
+ void TraceEndCHROMIUM() override;
+diff --git a/gpu/command_buffer/client/gles2_trace_implementation_impl_autogen.h b/gpu/command_buffer/client/gles2_trace_implementation_impl_autogen.h
+index ab66f113a75e2..6bc45021b1c68 100644
+--- gpu/command_buffer/client/gles2_trace_implementation_impl_autogen.h
++++ gpu/command_buffer/client/gles2_trace_implementation_impl_autogen.h
+@@ -2091,6 +2091,19 @@ void GLES2TraceImplementation::GetUniformsES3CHROMIUM(GLuint program,
+   gl_->GetUniformsES3CHROMIUM(program, bufsize, size, info);
+ }
+ 
++GLuint GLES2TraceImplementation::CreateImageCHROMIUM(ClientBuffer buffer,
++                                                     GLsizei width,
++                                                     GLsizei height,
++                                                     GLenum internalformat) {
++  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::CreateImageCHROMIUM");
++  return gl_->CreateImageCHROMIUM(buffer, width, height, internalformat);
++}
++
++void GLES2TraceImplementation::DestroyImageCHROMIUM(GLuint image_id) {
++  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::DestroyImageCHROMIUM");
++  gl_->DestroyImageCHROMIUM(image_id);
++}
++
+ void GLES2TraceImplementation::DescheduleUntilFinishedCHROMIUM() {
+   TRACE_EVENT_BINARY_EFFICIENT0("gpu",
+                                 "GLES2Trace::DescheduleUntilFinishedCHROMIUM");
+@@ -2227,6 +2240,28 @@ void GLES2TraceImplementation::BindUniformLocationCHROMIUM(GLuint program,
+   gl_->BindUniformLocationCHROMIUM(program, location, name);
+ }
+ 
++void GLES2TraceImplementation::BindTexImage2DCHROMIUM(GLenum target,
++                                                      GLint imageId) {
++  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::BindTexImage2DCHROMIUM");
++  gl_->BindTexImage2DCHROMIUM(target, imageId);
++}
++
++void GLES2TraceImplementation::BindTexImage2DWithInternalformatCHROMIUM(
++    GLenum target,
++    GLenum internalformat,
++    GLint imageId) {
++  TRACE_EVENT_BINARY_EFFICIENT0(
++      "gpu", "GLES2Trace::BindTexImage2DWithInternalformatCHROMIUM");
++  gl_->BindTexImage2DWithInternalformatCHROMIUM(target, internalformat,
++                                                imageId);
++}
++
++void GLES2TraceImplementation::ReleaseTexImage2DCHROMIUM(GLenum target,
++                                                         GLint imageId) {
++  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::ReleaseTexImage2DCHROMIUM");
++  gl_->ReleaseTexImage2DCHROMIUM(target, imageId);
++}
++
+ void GLES2TraceImplementation::TraceBeginCHROMIUM(const char* category_name,
+                                                   const char* trace_name) {
+   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "GLES2Trace::TraceBeginCHROMIUM");
+diff --git a/gpu/command_buffer/client/gpu_control.h b/gpu/command_buffer/client/gpu_control.h
+index 4bcb13a8e8319..fc9a6a3383ecc 100644
+--- gpu/command_buffer/client/gpu_control.h
++++ gpu/command_buffer/client/gpu_control.h
+@@ -47,6 +47,15 @@ class GPU_EXPORT GpuControl {
+ 
+   virtual const Capabilities& GetCapabilities() const = 0;
+ 
++  // Create an image for a client buffer with the given dimensions. Returns its
++  // ID or -1 on error.
++  virtual int32_t CreateImage(ClientBuffer buffer,
++                              size_t width,
++                              size_t height) = 0;
++
++  // Destroy an image. The ID must be positive.
++  virtual void DestroyImage(int32_t id) = 0;
++
+   // Runs |callback| when a query created via glCreateQueryEXT() has cleared
+   // passed the glEndQueryEXT() point.
+   virtual void SignalQuery(uint32_t query, base::OnceClosure callback) = 0;
+diff --git a/gpu/command_buffer/client/raster_implementation_gles_unittest.cc b/gpu/command_buffer/client/raster_implementation_gles_unittest.cc
+index 7d1fe72b16b6d..ce230d299aa91 100644
+--- gpu/command_buffer/client/raster_implementation_gles_unittest.cc
++++ gpu/command_buffer/client/raster_implementation_gles_unittest.cc
+@@ -92,6 +92,16 @@ class RasterMockGLES2Interface : public gles2::GLES2InterfaceStub {
+                void(GLuint texture, GLenum mode));
+   MOCK_METHOD1(EndSharedImageAccessDirectCHROMIUM, void(GLuint texture));
+ 
++  // Image objects.
++  MOCK_METHOD4(CreateImageCHROMIUM,
++               GLuint(ClientBuffer buffer,
++                      GLsizei width,
++                      GLsizei height,
++                      GLenum internalformat));
++  MOCK_METHOD2(BindTexImage2DCHROMIUM, void(GLenum target, GLint imageId));
++  MOCK_METHOD2(ReleaseTexImage2DCHROMIUM, void(GLenum target, GLint imageId));
++  MOCK_METHOD1(DestroyImageCHROMIUM, void(GLuint image_id));
++
+   // Texture allocation and copying.
+   MOCK_METHOD9(TexImage2D,
+                void(GLenum target,
+diff --git a/gpu/command_buffer/common/gles2_cmd_format_autogen.h b/gpu/command_buffer/common/gles2_cmd_format_autogen.h
+index a7061f6f978f9..3c392f592bb82 100644
+--- gpu/command_buffer/common/gles2_cmd_format_autogen.h
++++ gpu/command_buffer/common/gles2_cmd_format_autogen.h
+@@ -14612,6 +14612,126 @@ static_assert(
+     offsetof(BindUniformLocationCHROMIUMBucket, name_bucket_id) == 12,
+     "offset of BindUniformLocationCHROMIUMBucket name_bucket_id should be 12");
+ 
++struct BindTexImage2DCHROMIUM {
++  typedef BindTexImage2DCHROMIUM ValueType;
++  static const CommandId kCmdId = kBindTexImage2DCHROMIUM;
++  static const cmd::ArgFlags kArgFlags = cmd::kFixed;
++  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
++
++  static uint32_t ComputeSize() {
++    return static_cast<uint32_t>(sizeof(ValueType));  // NOLINT
++  }
++
++  void SetHeader() { header.SetCmd<ValueType>(); }
++
++  void Init(GLenum _target, GLint _imageId) {
++    SetHeader();
++    target = _target;
++    imageId = _imageId;
++  }
++
++  void* Set(void* cmd, GLenum _target, GLint _imageId) {
++    static_cast<ValueType*>(cmd)->Init(_target, _imageId);
++    return NextCmdAddress<ValueType>(cmd);
++  }
++
++  gpu::CommandHeader header;
++  uint32_t target;
++  int32_t imageId;
++};
++
++static_assert(sizeof(BindTexImage2DCHROMIUM) == 12,
++              "size of BindTexImage2DCHROMIUM should be 12");
++static_assert(offsetof(BindTexImage2DCHROMIUM, header) == 0,
++              "offset of BindTexImage2DCHROMIUM header should be 0");
++static_assert(offsetof(BindTexImage2DCHROMIUM, target) == 4,
++              "offset of BindTexImage2DCHROMIUM target should be 4");
++static_assert(offsetof(BindTexImage2DCHROMIUM, imageId) == 8,
++              "offset of BindTexImage2DCHROMIUM imageId should be 8");
++
++struct BindTexImage2DWithInternalformatCHROMIUM {
++  typedef BindTexImage2DWithInternalformatCHROMIUM ValueType;
++  static const CommandId kCmdId = kBindTexImage2DWithInternalformatCHROMIUM;
++  static const cmd::ArgFlags kArgFlags = cmd::kFixed;
++  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
++
++  static uint32_t ComputeSize() {
++    return static_cast<uint32_t>(sizeof(ValueType));  // NOLINT
++  }
++
++  void SetHeader() { header.SetCmd<ValueType>(); }
++
++  void Init(GLenum _target, GLenum _internalformat, GLint _imageId) {
++    SetHeader();
++    target = _target;
++    internalformat = _internalformat;
++    imageId = _imageId;
++  }
++
++  void* Set(void* cmd, GLenum _target, GLenum _internalformat, GLint _imageId) {
++    static_cast<ValueType*>(cmd)->Init(_target, _internalformat, _imageId);
++    return NextCmdAddress<ValueType>(cmd);
++  }
++
++  gpu::CommandHeader header;
++  uint32_t target;
++  uint32_t internalformat;
++  int32_t imageId;
++};
++
++static_assert(sizeof(BindTexImage2DWithInternalformatCHROMIUM) == 16,
++              "size of BindTexImage2DWithInternalformatCHROMIUM should be 16");
++static_assert(
++    offsetof(BindTexImage2DWithInternalformatCHROMIUM, header) == 0,
++    "offset of BindTexImage2DWithInternalformatCHROMIUM header should be 0");
++static_assert(
++    offsetof(BindTexImage2DWithInternalformatCHROMIUM, target) == 4,
++    "offset of BindTexImage2DWithInternalformatCHROMIUM target should be 4");
++static_assert(offsetof(BindTexImage2DWithInternalformatCHROMIUM,
++                       internalformat) == 8,
++              "offset of BindTexImage2DWithInternalformatCHROMIUM "
++              "internalformat should be 8");
++static_assert(
++    offsetof(BindTexImage2DWithInternalformatCHROMIUM, imageId) == 12,
++    "offset of BindTexImage2DWithInternalformatCHROMIUM imageId should be 12");
++
++struct ReleaseTexImage2DCHROMIUM {
++  typedef ReleaseTexImage2DCHROMIUM ValueType;
++  static const CommandId kCmdId = kReleaseTexImage2DCHROMIUM;
++  static const cmd::ArgFlags kArgFlags = cmd::kFixed;
++  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
++
++  static uint32_t ComputeSize() {
++    return static_cast<uint32_t>(sizeof(ValueType));  // NOLINT
++  }
++
++  void SetHeader() { header.SetCmd<ValueType>(); }
++
++  void Init(GLenum _target, GLint _imageId) {
++    SetHeader();
++    target = _target;
++    imageId = _imageId;
++  }
++
++  void* Set(void* cmd, GLenum _target, GLint _imageId) {
++    static_cast<ValueType*>(cmd)->Init(_target, _imageId);
++    return NextCmdAddress<ValueType>(cmd);
++  }
++
++  gpu::CommandHeader header;
++  uint32_t target;
++  int32_t imageId;
++};
++
++static_assert(sizeof(ReleaseTexImage2DCHROMIUM) == 12,
++              "size of ReleaseTexImage2DCHROMIUM should be 12");
++static_assert(offsetof(ReleaseTexImage2DCHROMIUM, header) == 0,
++              "offset of ReleaseTexImage2DCHROMIUM header should be 0");
++static_assert(offsetof(ReleaseTexImage2DCHROMIUM, target) == 4,
++              "offset of ReleaseTexImage2DCHROMIUM target should be 4");
++static_assert(offsetof(ReleaseTexImage2DCHROMIUM, imageId) == 8,
++              "offset of ReleaseTexImage2DCHROMIUM imageId should be 8");
++
+ struct TraceBeginCHROMIUM {
+   typedef TraceBeginCHROMIUM ValueType;
+   static const CommandId kCmdId = kTraceBeginCHROMIUM;
+diff --git a/gpu/command_buffer/common/gles2_cmd_format_test_autogen.h b/gpu/command_buffer/common/gles2_cmd_format_test_autogen.h
+index 41b430d267720..6f23f44bec62d 100644
+--- gpu/command_buffer/common/gles2_cmd_format_test_autogen.h
++++ gpu/command_buffer/common/gles2_cmd_format_test_autogen.h
+@@ -4814,6 +4814,47 @@ TEST_F(GLES2FormatTest, BindUniformLocationCHROMIUMBucket) {
+   CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
+ }
+ 
++TEST_F(GLES2FormatTest, BindTexImage2DCHROMIUM) {
++  cmds::BindTexImage2DCHROMIUM& cmd =
++      *GetBufferAs<cmds::BindTexImage2DCHROMIUM>();
++  void* next_cmd =
++      cmd.Set(&cmd, static_cast<GLenum>(11), static_cast<GLint>(12));
++  EXPECT_EQ(static_cast<uint32_t>(cmds::BindTexImage2DCHROMIUM::kCmdId),
++            cmd.header.command);
++  EXPECT_EQ(sizeof(cmd), cmd.header.size * 4u);
++  EXPECT_EQ(static_cast<GLenum>(11), cmd.target);
++  EXPECT_EQ(static_cast<GLint>(12), cmd.imageId);
++  CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
++}
++
++TEST_F(GLES2FormatTest, BindTexImage2DWithInternalformatCHROMIUM) {
++  cmds::BindTexImage2DWithInternalformatCHROMIUM& cmd =
++      *GetBufferAs<cmds::BindTexImage2DWithInternalformatCHROMIUM>();
++  void* next_cmd = cmd.Set(&cmd, static_cast<GLenum>(11),
++                           static_cast<GLenum>(12), static_cast<GLint>(13));
++  EXPECT_EQ(static_cast<uint32_t>(
++                cmds::BindTexImage2DWithInternalformatCHROMIUM::kCmdId),
++            cmd.header.command);
++  EXPECT_EQ(sizeof(cmd), cmd.header.size * 4u);
++  EXPECT_EQ(static_cast<GLenum>(11), cmd.target);
++  EXPECT_EQ(static_cast<GLenum>(12), cmd.internalformat);
++  EXPECT_EQ(static_cast<GLint>(13), cmd.imageId);
++  CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
++}
++
++TEST_F(GLES2FormatTest, ReleaseTexImage2DCHROMIUM) {
++  cmds::ReleaseTexImage2DCHROMIUM& cmd =
++      *GetBufferAs<cmds::ReleaseTexImage2DCHROMIUM>();
++  void* next_cmd =
++      cmd.Set(&cmd, static_cast<GLenum>(11), static_cast<GLint>(12));
++  EXPECT_EQ(static_cast<uint32_t>(cmds::ReleaseTexImage2DCHROMIUM::kCmdId),
++            cmd.header.command);
++  EXPECT_EQ(sizeof(cmd), cmd.header.size * 4u);
++  EXPECT_EQ(static_cast<GLenum>(11), cmd.target);
++  EXPECT_EQ(static_cast<GLint>(12), cmd.imageId);
++  CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
++}
++
+ TEST_F(GLES2FormatTest, TraceBeginCHROMIUM) {
+   cmds::TraceBeginCHROMIUM& cmd = *GetBufferAs<cmds::TraceBeginCHROMIUM>();
+   void* next_cmd =
+diff --git a/gpu/command_buffer/common/gles2_cmd_ids_autogen.h b/gpu/command_buffer/common/gles2_cmd_ids_autogen.h
+index 437031db4fb5f..ea3a56cb63920 100644
+--- gpu/command_buffer/common/gles2_cmd_ids_autogen.h
++++ gpu/command_buffer/common/gles2_cmd_ids_autogen.h
+@@ -302,54 +302,57 @@
+   OP(ProduceTextureDirectCHROMIUMImmediate)                    /* 543 */ \
+   OP(CreateAndConsumeTextureINTERNALImmediate)                 /* 544 */ \
+   OP(BindUniformLocationCHROMIUMBucket)                        /* 545 */ \
+-  OP(TraceBeginCHROMIUM)                                       /* 546 */ \
+-  OP(TraceEndCHROMIUM)                                         /* 547 */ \
+-  OP(DiscardFramebufferEXTImmediate)                           /* 548 */ \
+-  OP(LoseContextCHROMIUM)                                      /* 549 */ \
+-  OP(DrawBuffersEXTImmediate)                                  /* 550 */ \
+-  OP(DiscardBackbufferCHROMIUM)                                /* 551 */ \
+-  OP(ScheduleOverlayPlaneCHROMIUM)                             /* 552 */ \
+-  OP(ScheduleCALayerSharedStateCHROMIUM)                       /* 553 */ \
+-  OP(ScheduleCALayerCHROMIUM)                                  /* 554 */ \
+-  OP(ScheduleCALayerInUseQueryCHROMIUMImmediate)               /* 555 */ \
+-  OP(CommitOverlayPlanesCHROMIUM)                              /* 556 */ \
+-  OP(FlushDriverCachesCHROMIUM)                                /* 557 */ \
+-  OP(ScheduleDCLayerCHROMIUM)                                  /* 558 */ \
+-  OP(SetActiveURLCHROMIUM)                                     /* 559 */ \
+-  OP(ContextVisibilityHintCHROMIUM)                            /* 560 */ \
+-  OP(CoverageModulationCHROMIUM)                               /* 561 */ \
+-  OP(BlendBarrierKHR)                                          /* 562 */ \
+-  OP(BindFragDataLocationIndexedEXTBucket)                     /* 563 */ \
+-  OP(BindFragDataLocationEXTBucket)                            /* 564 */ \
+-  OP(GetFragDataIndexEXT)                                      /* 565 */ \
+-  OP(SwapBuffersWithBoundsCHROMIUMImmediate)                   /* 566 */ \
+-  OP(SetDrawRectangleCHROMIUM)                                 /* 567 */ \
+-  OP(SetEnableDCLayersCHROMIUM)                                /* 568 */ \
+-  OP(InitializeDiscardableTextureCHROMIUM)                     /* 569 */ \
+-  OP(UnlockDiscardableTextureCHROMIUM)                         /* 570 */ \
+-  OP(LockDiscardableTextureCHROMIUM)                           /* 571 */ \
+-  OP(TexStorage2DImageCHROMIUM)                                /* 572 */ \
+-  OP(SetColorSpaceMetadataCHROMIUM)                            /* 573 */ \
+-  OP(WindowRectanglesEXTImmediate)                             /* 574 */ \
+-  OP(CreateGpuFenceINTERNAL)                                   /* 575 */ \
+-  OP(WaitGpuFenceCHROMIUM)                                     /* 576 */ \
+-  OP(DestroyGpuFenceCHROMIUM)                                  /* 577 */ \
+-  OP(SetReadbackBufferShadowAllocationINTERNAL)                /* 578 */ \
+-  OP(FramebufferTextureMultiviewOVR)                           /* 579 */ \
+-  OP(MaxShaderCompilerThreadsKHR)                              /* 580 */ \
+-  OP(CreateAndTexStorage2DSharedImageINTERNALImmediate)        /* 581 */ \
+-  OP(BeginSharedImageAccessDirectCHROMIUM)                     /* 582 */ \
+-  OP(EndSharedImageAccessDirectCHROMIUM)                       /* 583 */ \
+-  OP(BeginBatchReadAccessSharedImageCHROMIUM)                  /* 584 */ \
+-  OP(EndBatchReadAccessSharedImageCHROMIUM)                    /* 585 */ \
+-  OP(EnableiOES)                                               /* 586 */ \
+-  OP(DisableiOES)                                              /* 587 */ \
+-  OP(BlendEquationiOES)                                        /* 588 */ \
+-  OP(BlendEquationSeparateiOES)                                /* 589 */ \
+-  OP(BlendFunciOES)                                            /* 590 */ \
+-  OP(BlendFuncSeparateiOES)                                    /* 591 */ \
+-  OP(ColorMaskiOES)                                            /* 592 */ \
+-  OP(IsEnablediOES)                                            /* 593 */
++  OP(BindTexImage2DCHROMIUM)                                   /* 546 */ \
++  OP(BindTexImage2DWithInternalformatCHROMIUM)                 /* 547 */ \
++  OP(ReleaseTexImage2DCHROMIUM)                                /* 548 */ \
++  OP(TraceBeginCHROMIUM)                                       /* 549 */ \
++  OP(TraceEndCHROMIUM)                                         /* 550 */ \
++  OP(DiscardFramebufferEXTImmediate)                           /* 551 */ \
++  OP(LoseContextCHROMIUM)                                      /* 552 */ \
++  OP(DrawBuffersEXTImmediate)                                  /* 553 */ \
++  OP(DiscardBackbufferCHROMIUM)                                /* 554 */ \
++  OP(ScheduleOverlayPlaneCHROMIUM)                             /* 555 */ \
++  OP(ScheduleCALayerSharedStateCHROMIUM)                       /* 556 */ \
++  OP(ScheduleCALayerCHROMIUM)                                  /* 557 */ \
++  OP(ScheduleCALayerInUseQueryCHROMIUMImmediate)               /* 558 */ \
++  OP(CommitOverlayPlanesCHROMIUM)                              /* 559 */ \
++  OP(FlushDriverCachesCHROMIUM)                                /* 560 */ \
++  OP(ScheduleDCLayerCHROMIUM)                                  /* 561 */ \
++  OP(SetActiveURLCHROMIUM)                                     /* 562 */ \
++  OP(ContextVisibilityHintCHROMIUM)                            /* 563 */ \
++  OP(CoverageModulationCHROMIUM)                               /* 564 */ \
++  OP(BlendBarrierKHR)                                          /* 565 */ \
++  OP(BindFragDataLocationIndexedEXTBucket)                     /* 566 */ \
++  OP(BindFragDataLocationEXTBucket)                            /* 567 */ \
++  OP(GetFragDataIndexEXT)                                      /* 568 */ \
++  OP(SwapBuffersWithBoundsCHROMIUMImmediate)                   /* 569 */ \
++  OP(SetDrawRectangleCHROMIUM)                                 /* 570 */ \
++  OP(SetEnableDCLayersCHROMIUM)                                /* 571 */ \
++  OP(InitializeDiscardableTextureCHROMIUM)                     /* 572 */ \
++  OP(UnlockDiscardableTextureCHROMIUM)                         /* 573 */ \
++  OP(LockDiscardableTextureCHROMIUM)                           /* 574 */ \
++  OP(TexStorage2DImageCHROMIUM)                                /* 575 */ \
++  OP(SetColorSpaceMetadataCHROMIUM)                            /* 576 */ \
++  OP(WindowRectanglesEXTImmediate)                             /* 577 */ \
++  OP(CreateGpuFenceINTERNAL)                                   /* 578 */ \
++  OP(WaitGpuFenceCHROMIUM)                                     /* 579 */ \
++  OP(DestroyGpuFenceCHROMIUM)                                  /* 580 */ \
++  OP(SetReadbackBufferShadowAllocationINTERNAL)                /* 581 */ \
++  OP(FramebufferTextureMultiviewOVR)                           /* 582 */ \
++  OP(MaxShaderCompilerThreadsKHR)                              /* 583 */ \
++  OP(CreateAndTexStorage2DSharedImageINTERNALImmediate)        /* 584 */ \
++  OP(BeginSharedImageAccessDirectCHROMIUM)                     /* 585 */ \
++  OP(EndSharedImageAccessDirectCHROMIUM)                       /* 586 */ \
++  OP(BeginBatchReadAccessSharedImageCHROMIUM)                  /* 587 */ \
++  OP(EndBatchReadAccessSharedImageCHROMIUM)                    /* 588 */ \
++  OP(EnableiOES)                                               /* 589 */ \
++  OP(DisableiOES)                                              /* 590 */ \
++  OP(BlendEquationiOES)                                        /* 591 */ \
++  OP(BlendEquationSeparateiOES)                                /* 592 */ \
++  OP(BlendFunciOES)                                            /* 593 */ \
++  OP(BlendFuncSeparateiOES)                                    /* 594 */ \
++  OP(ColorMaskiOES)                                            /* 595 */ \
++  OP(IsEnablediOES)                                            /* 596 */
+ 
+ enum CommandId {
+   kOneBeforeStartPoint =
+diff --git a/gpu/command_buffer/gles2_cmd_buffer_functions.txt b/gpu/command_buffer/gles2_cmd_buffer_functions.txt
+index 22a77da5d85a3..f6e8734ed32fd 100644
+--- gpu/command_buffer/gles2_cmd_buffer_functions.txt
++++ gpu/command_buffer/gles2_cmd_buffer_functions.txt
+@@ -310,6 +310,8 @@ GL_APICALL void         GL_APIENTRY glGetProgramInfoCHROMIUM (GLidProgram progra
+ GL_APICALL void         GL_APIENTRY glGetUniformBlocksCHROMIUM (GLidProgram program, GLsizeiNotNegative bufsize, GLsizei* size, void* info);
+ GL_APICALL void         GL_APIENTRY glGetTransformFeedbackVaryingsCHROMIUM (GLidProgram program, GLsizeiNotNegative bufsize, GLsizei* size, void* info);
+ GL_APICALL void         GL_APIENTRY glGetUniformsES3CHROMIUM (GLidProgram program, GLsizeiNotNegative bufsize, GLsizei* size, void* info);
++GL_APICALL GLuint       GL_APIENTRY glCreateImageCHROMIUM (ClientBuffer buffer, GLsizei width, GLsizei height, GLenum internalformat);
++GL_APICALL void         GL_APIENTRY glDestroyImageCHROMIUM (GLuint image_id);
+ GL_APICALL void         GL_APIENTRY glDescheduleUntilFinishedCHROMIUM (void);
+ GL_APICALL void         GL_APIENTRY glGetTranslatedShaderSourceANGLE (GLidShader shader, GLsizeiNotNegative bufsize, GLsizeiOptional* length, char* source);
+ GL_APICALL void         GL_APIENTRY glPostSubBufferCHROMIUM (GLuint64 swap_id, GLint x, GLint y, GLint width, GLint height, GLbitfieldSwapBuffersFlags flags = 0);
+@@ -324,6 +326,9 @@ GL_APICALL void         GL_APIENTRY glProduceTextureDirectCHROMIUM (GLidBindText
+ GL_APICALL GLuint       GL_APIENTRY glCreateAndConsumeTextureCHROMIUM (const GLbyte* mailbox);
+ GL_APICALL void         GL_APIENTRY glCreateAndConsumeTextureINTERNAL (GLuint texture, const GLbyte* mailbox);
+ GL_APICALL void         GL_APIENTRY glBindUniformLocationCHROMIUM (GLidProgram program, GLint location, const char* name);
++GL_APICALL void         GL_APIENTRY glBindTexImage2DCHROMIUM (GLenumTextureBindTarget target, GLint imageId);
++GL_APICALL void         GL_APIENTRY glBindTexImage2DWithInternalformatCHROMIUM (GLenumTextureBindTarget target, GLenumTextureInternalFormat internalformat, GLint imageId);
++GL_APICALL void         GL_APIENTRY glReleaseTexImage2DCHROMIUM (GLenumTextureBindTarget target, GLint imageId);
+ GL_APICALL void         GL_APIENTRY glTraceBeginCHROMIUM (const char* category_name, const char* trace_name);
+ GL_APICALL void         GL_APIENTRY glTraceEndCHROMIUM (void);
+ GL_APICALL void         GL_APIENTRY glDiscardFramebufferEXT (GLenumFramebufferTarget target, GLsizei count, const GLenum* attachments);
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder.cc b/gpu/command_buffer/service/gles2_cmd_decoder.cc
+index 54a14f92efcca..4847ff3403f31 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder.cc
++++ gpu/command_buffer/service/gles2_cmd_decoder.cc
+@@ -1242,6 +1242,20 @@ class GLES2DecoderImpl : public GLES2Decoder,
+                  uint32_t texture_target,
+                  gl::GLImage* image,
+                  bool can_bind_to_sampler) override;
++  void DoBindTexImage2DCHROMIUM(
++      GLenum target,
++      GLint image_id);
++  void DoBindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                                  GLenum internalformat,
++                                                  GLint image_id);
++  // Common implementation of DoBindTexImage2DCHROMIUM entry points.
++  void BindTexImage2DCHROMIUMImpl(const char* function_name,
++                                  GLenum target,
++                                  GLenum internalformat,
++                                  GLint image_id);
++  void DoReleaseTexImage2DCHROMIUM(
++      GLenum target,
++      GLint image_id);
+ 
+   void DoTraceEndCHROMIUM(void);
+ 
+@@ -19105,6 +19119,118 @@ void GLES2DecoderImpl::BindImage(uint32_t client_texture_id,
+                                        : gpu::gles2::Texture::UNBOUND);
+ }
+ 
++void GLES2DecoderImpl::DoBindTexImage2DCHROMIUM(
++    GLenum target, GLint image_id) {
++  TRACE_EVENT0("gpu", "GLES2DecoderImpl::DoBindTexImage2DCHROMIUM");
++
++  BindTexImage2DCHROMIUMImpl("glBindTexImage2DCHROMIUM", target, 0, image_id);
++}
++
++void GLES2DecoderImpl::DoBindTexImage2DWithInternalformatCHROMIUM(
++    GLenum target,
++    GLenum internalformat,
++    GLint image_id) {
++  TRACE_EVENT0("gpu",
++               "GLES2DecoderImpl::DoBindTexImage2DWithInternalformatCHROMIUM");
++
++  BindTexImage2DCHROMIUMImpl("glBindTexImage2DWithInternalformatCHROMIUM",
++                             target, internalformat, image_id);
++}
++
++void GLES2DecoderImpl::BindTexImage2DCHROMIUMImpl(const char* function_name,
++                                                  GLenum target,
++                                                  GLenum internalformat,
++                                                  GLint image_id) {
++  if (target == GL_TEXTURE_CUBE_MAP) {
++    LOCAL_SET_GL_ERROR(GL_INVALID_ENUM, function_name, "invalid target");
++    return;
++  }
++
++  // Default target might be conceptually valid, but disallow it to avoid
++  // accidents.
++  TextureRef* texture_ref =
++      texture_manager()->GetTextureInfoForTargetUnlessDefault(&state_, target);
++  if (!texture_ref) {
++    LOCAL_SET_GL_ERROR(GL_INVALID_OPERATION, function_name, "no texture bound");
++    return;
++  }
++
++  gl::GLImage* image = image_manager()->LookupImage(image_id);
++  if (!image) {
++    LOCAL_SET_GL_ERROR(GL_INVALID_OPERATION, function_name,
++                       "no image found with the given ID");
++    return;
++  }
++
++  Texture::ImageState image_state = Texture::UNBOUND;
++
++  if (image->ShouldBindOrCopy() == gl::GLImage::BIND) {
++    ScopedGLErrorSuppressor suppressor(
++        "GLES2DecoderImpl::DoBindTexImage2DCHROMIUM", error_state_.get());
++
++    // Note: We fallback to using CopyTexImage() before the texture is used
++    // when BindTexImage() fails.
++    if (internalformat) {
++      if (image->BindTexImageWithInternalformat(target, internalformat))
++        image_state = Texture::BOUND;
++    } else {
++      if (image->BindTexImage(target))
++        image_state = Texture::BOUND;
++    }
++  }
++
++  gfx::Size size = image->GetSize();
++  GLenum texture_internalformat =
++      internalformat ? internalformat : image->GetInternalFormat();
++  texture_manager()->SetLevelInfo(texture_ref, target, 0,
++                                  texture_internalformat, size.width(),
++                                  size.height(), 1, 0, image->GetDataFormat(),
++                                  image->GetDataType(), gfx::Rect(size));
++  texture_manager()->SetLevelImage(texture_ref, target, 0, image, image_state);
++}
++
++void GLES2DecoderImpl::DoReleaseTexImage2DCHROMIUM(
++    GLenum target, GLint image_id) {
++  TRACE_EVENT0("gpu", "GLES2DecoderImpl::DoReleaseTexImage2DCHROMIUM");
++
++  // Default target might be conceptually valid, but disallow it to avoid
++  // accidents.
++  TextureRef* texture_ref =
++      texture_manager()->GetTextureInfoForTargetUnlessDefault(&state_, target);
++  if (!texture_ref) {
++    LOCAL_SET_GL_ERROR(
++        GL_INVALID_OPERATION,
++        "glReleaseTexImage2DCHROMIUM", "no texture bound");
++    return;
++  }
++
++  gl::GLImage* image = image_manager()->LookupImage(image_id);
++  if (!image) {
++    LOCAL_SET_GL_ERROR(
++        GL_INVALID_OPERATION,
++        "glReleaseTexImage2DCHROMIUM", "no image found with the given ID");
++    return;
++  }
++
++  Texture::ImageState image_state;
++
++  // Do nothing when image is not currently bound.
++  if (texture_ref->texture()->GetLevelImage(target, 0, &image_state) != image)
++    return;
++
++  if (image_state == Texture::BOUND) {
++    ScopedGLErrorSuppressor suppressor(
++        "GLES2DecoderImpl::DoReleaseTexImage2DCHROMIUM", error_state_.get());
++
++    image->ReleaseTexImage(target);
++    texture_manager()->SetLevelInfo(texture_ref, target, 0, GL_RGBA, 0, 0, 1, 0,
++                                    GL_RGBA, GL_UNSIGNED_BYTE, gfx::Rect());
++  }
++
++  texture_manager()->SetLevelImage(texture_ref, target, 0, nullptr,
++                                   Texture::UNBOUND);
++}
++
+ error::Error GLES2DecoderImpl::HandleTraceBeginCHROMIUM(
+     uint32_t immediate_data_size,
+     const volatile void* cmd_data) {
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_autogen.h b/gpu/command_buffer/service/gles2_cmd_decoder_autogen.h
+index e1361c48202b2..85544c95213ff 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_autogen.h
++++ gpu/command_buffer/service/gles2_cmd_decoder_autogen.h
+@@ -5026,6 +5026,64 @@ error::Error GLES2DecoderImpl::HandleCreateAndConsumeTextureINTERNALImmediate(
+   return error::kNoError;
+ }
+ 
++error::Error GLES2DecoderImpl::HandleBindTexImage2DCHROMIUM(
++    uint32_t immediate_data_size,
++    const volatile void* cmd_data) {
++  const volatile gles2::cmds::BindTexImage2DCHROMIUM& c =
++      *static_cast<const volatile gles2::cmds::BindTexImage2DCHROMIUM*>(
++          cmd_data);
++  GLenum target = static_cast<GLenum>(c.target);
++  GLint imageId = static_cast<GLint>(c.imageId);
++  if (!validators_->texture_bind_target.IsValid(target)) {
++    LOCAL_SET_GL_ERROR_INVALID_ENUM("glBindTexImage2DCHROMIUM", target,
++                                    "target");
++    return error::kNoError;
++  }
++  DoBindTexImage2DCHROMIUM(target, imageId);
++  return error::kNoError;
++}
++
++error::Error GLES2DecoderImpl::HandleBindTexImage2DWithInternalformatCHROMIUM(
++    uint32_t immediate_data_size,
++    const volatile void* cmd_data) {
++  const volatile gles2::cmds::BindTexImage2DWithInternalformatCHROMIUM& c =
++      *static_cast<const volatile gles2::cmds::
++                       BindTexImage2DWithInternalformatCHROMIUM*>(cmd_data);
++  GLenum target = static_cast<GLenum>(c.target);
++  GLenum internalformat = static_cast<GLenum>(c.internalformat);
++  GLint imageId = static_cast<GLint>(c.imageId);
++  if (!validators_->texture_bind_target.IsValid(target)) {
++    LOCAL_SET_GL_ERROR_INVALID_ENUM(
++        "glBindTexImage2DWithInternalformatCHROMIUM", target, "target");
++    return error::kNoError;
++  }
++  if (!validators_->texture_internal_format.IsValid(internalformat)) {
++    LOCAL_SET_GL_ERROR_INVALID_ENUM(
++        "glBindTexImage2DWithInternalformatCHROMIUM", internalformat,
++        "internalformat");
++    return error::kNoError;
++  }
++  DoBindTexImage2DWithInternalformatCHROMIUM(target, internalformat, imageId);
++  return error::kNoError;
++}
++
++error::Error GLES2DecoderImpl::HandleReleaseTexImage2DCHROMIUM(
++    uint32_t immediate_data_size,
++    const volatile void* cmd_data) {
++  const volatile gles2::cmds::ReleaseTexImage2DCHROMIUM& c =
++      *static_cast<const volatile gles2::cmds::ReleaseTexImage2DCHROMIUM*>(
++          cmd_data);
++  GLenum target = static_cast<GLenum>(c.target);
++  GLint imageId = static_cast<GLint>(c.imageId);
++  if (!validators_->texture_bind_target.IsValid(target)) {
++    LOCAL_SET_GL_ERROR_INVALID_ENUM("glReleaseTexImage2DCHROMIUM", target,
++                                    "target");
++    return error::kNoError;
++  }
++  DoReleaseTexImage2DCHROMIUM(target, imageId);
++  return error::kNoError;
++}
++
+ error::Error GLES2DecoderImpl::HandleTraceEndCHROMIUM(
+     uint32_t immediate_data_size,
+     const volatile void* cmd_data) {
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_passthrough.cc b/gpu/command_buffer/service/gles2_cmd_decoder_passthrough.cc
+index 5188aaa7a03ff..1ef96d7d44a9a 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_passthrough.cc
++++ gpu/command_buffer/service/gles2_cmd_decoder_passthrough.cc
+@@ -2978,6 +2978,52 @@ error::Error GLES2DecoderPassthroughImpl::HandleSetActiveURLCHROMIUM(
+   return error::kNoError;
+ }
+ 
++error::Error GLES2DecoderPassthroughImpl::BindTexImage2DCHROMIUMImpl(
++    GLenum target,
++    GLenum internalformat,
++    GLint imageId) {
++  TextureTarget target_enum = GLenumToTextureTarget(target);
++  if (target_enum == TextureTarget::kCubeMap ||
++      target_enum == TextureTarget::kUnkown) {
++    InsertError(GL_INVALID_ENUM, "Invalid target");
++    return error::kNoError;
++  }
++
++  gl::GLImage* image = group_->image_manager()->LookupImage(imageId);
++  if (image == nullptr) {
++    InsertError(GL_INVALID_OPERATION, "No image found with the given ID");
++    return error::kNoError;
++  }
++
++  const BoundTexture& bound_texture =
++      bound_textures_[static_cast<size_t>(target_enum)][active_texture_unit_];
++  if (bound_texture.texture == nullptr) {
++    InsertError(GL_INVALID_OPERATION, "No texture bound");
++    return error::kNoError;
++  }
++
++  if (image->ShouldBindOrCopy() == gl::GLImage::BIND) {
++    if (internalformat)
++      image->BindTexImageWithInternalformat(target, internalformat);
++    else
++      image->BindTexImage(target);
++  } else {
++    image->CopyTexImage(target);
++  }
++
++  // Target is already validated
++  UpdateTextureSizeFromTarget(target);
++
++  DCHECK(bound_texture.texture != nullptr);
++  bound_texture.texture->SetLevelImage(target, 0, image);
++
++  // If there was any GLImage bound to |target| on this texture unit, then
++  // forget it.
++  RemovePendingBindingTexture(target, active_texture_unit_);
++
++  return error::kNoError;
++}
++
+ void GLES2DecoderPassthroughImpl::VerifyServiceTextureObjectsExist() {
+   resources_->texture_object_map.ForEach(
+       [this](GLuint client_id, scoped_refptr<TexturePassthrough> texture) {
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_passthrough.h b/gpu/command_buffer/service/gles2_cmd_decoder_passthrough.h
+index 5eeee8d5ea90f..17c788e6c8d47 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_passthrough.h
++++ gpu/command_buffer/service/gles2_cmd_decoder_passthrough.h
+@@ -469,6 +469,10 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
+   // up-to-date.
+   void LazilyUpdateCurrentlyBoundElementArrayBuffer();
+ 
++  error::Error BindTexImage2DCHROMIUMImpl(GLenum target,
++                                          GLenum internalformat,
++                                          GLint image_id);
++
+   void VerifyServiceTextureObjectsExist();
+ 
+   bool IsEmulatedFramebufferBound(GLenum target) const;
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doer_prototypes.h b/gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doer_prototypes.h
+index 4ffa37dbe4fde..044308ce03479 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doer_prototypes.h
++++ gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doer_prototypes.h
+@@ -888,6 +888,11 @@ error::Error DoCreateAndConsumeTextureINTERNAL(GLuint texture_client_id,
+ error::Error DoBindUniformLocationCHROMIUM(GLuint program,
+                                            GLint location,
+                                            const char* name);
++error::Error DoBindTexImage2DCHROMIUM(GLenum target, GLint imageId);
++error::Error DoBindTexImage2DWithInternalformatCHROMIUM(GLenum target,
++                                                        GLenum internalformat,
++                                                        GLint imageId);
++error::Error DoReleaseTexImage2DCHROMIUM(GLenum target, GLint imageId);
+ error::Error DoTraceBeginCHROMIUM(const char* category_name,
+                                   const char* trace_name);
+ error::Error DoTraceEndCHROMIUM();
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doers.cc b/gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doers.cc
+index c54eca566b613..f96b3d196f86f 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doers.cc
++++ gpu/command_buffer/service/gles2_cmd_decoder_passthrough_doers.cc
+@@ -4686,6 +4686,55 @@ error::Error GLES2DecoderPassthroughImpl::DoBindUniformLocationCHROMIUM(
+   return error::kNoError;
+ }
+ 
++error::Error GLES2DecoderPassthroughImpl::DoBindTexImage2DCHROMIUM(
++    GLenum target,
++    GLint imageId) {
++  return BindTexImage2DCHROMIUMImpl(target, 0, imageId);
++}
++
++error::Error
++GLES2DecoderPassthroughImpl::DoBindTexImage2DWithInternalformatCHROMIUM(
++    GLenum target,
++    GLenum internalformat,
++    GLint imageId) {
++  return BindTexImage2DCHROMIUMImpl(target, internalformat, imageId);
++}
++
++error::Error GLES2DecoderPassthroughImpl::DoReleaseTexImage2DCHROMIUM(
++    GLenum target,
++    GLint imageId) {
++  TextureTarget target_enum = GLenumToTextureTarget(target);
++  if (target_enum == TextureTarget::kCubeMap ||
++      target_enum == TextureTarget::kUnkown) {
++    InsertError(GL_INVALID_ENUM, "Invalid target");
++    return error::kNoError;
++  }
++
++  const BoundTexture& bound_texture =
++      bound_textures_[static_cast<size_t>(target_enum)][active_texture_unit_];
++  if (bound_texture.texture == nullptr) {
++    InsertError(GL_INVALID_OPERATION, "No texture bound");
++    return error::kNoError;
++  }
++
++  gl::GLImage* image = group_->image_manager()->LookupImage(imageId);
++  if (image == nullptr) {
++    InsertError(GL_INVALID_OPERATION, "No image found with the given ID");
++    return error::kNoError;
++  }
++
++  // Only release the image if it is currently bound
++  if (bound_texture.texture->GetLevelImage(target, 0) == image) {
++    image->ReleaseTexImage(target);
++    bound_texture.texture->SetLevelImage(target, 0, nullptr);
++  }
++
++  // Target is already validated
++  UpdateTextureSizeFromTarget(target);
++
++  return error::kNoError;
++}
++
+ error::Error GLES2DecoderPassthroughImpl::DoTraceBeginCHROMIUM(
+     const char* category_name,
+     const char* trace_name) {
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_passthrough_handlers_autogen.cc b/gpu/command_buffer/service/gles2_cmd_decoder_passthrough_handlers_autogen.cc
+index ca1ab171618be..d24c1f37389b1 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_passthrough_handlers_autogen.cc
++++ gpu/command_buffer/service/gles2_cmd_decoder_passthrough_handlers_autogen.cc
+@@ -4302,6 +4302,54 @@ GLES2DecoderPassthroughImpl::HandleCreateAndConsumeTextureINTERNALImmediate(
+   return error::kNoError;
+ }
+ 
++error::Error GLES2DecoderPassthroughImpl::HandleBindTexImage2DCHROMIUM(
++    uint32_t immediate_data_size,
++    const volatile void* cmd_data) {
++  const volatile gles2::cmds::BindTexImage2DCHROMIUM& c =
++      *static_cast<const volatile gles2::cmds::BindTexImage2DCHROMIUM*>(
++          cmd_data);
++  GLenum target = static_cast<GLenum>(c.target);
++  GLint imageId = static_cast<GLint>(c.imageId);
++  error::Error error = DoBindTexImage2DCHROMIUM(target, imageId);
++  if (error != error::kNoError) {
++    return error;
++  }
++  return error::kNoError;
++}
++
++error::Error
++GLES2DecoderPassthroughImpl::HandleBindTexImage2DWithInternalformatCHROMIUM(
++    uint32_t immediate_data_size,
++    const volatile void* cmd_data) {
++  const volatile gles2::cmds::BindTexImage2DWithInternalformatCHROMIUM& c =
++      *static_cast<const volatile gles2::cmds::
++                       BindTexImage2DWithInternalformatCHROMIUM*>(cmd_data);
++  GLenum target = static_cast<GLenum>(c.target);
++  GLenum internalformat = static_cast<GLenum>(c.internalformat);
++  GLint imageId = static_cast<GLint>(c.imageId);
++  error::Error error = DoBindTexImage2DWithInternalformatCHROMIUM(
++      target, internalformat, imageId);
++  if (error != error::kNoError) {
++    return error;
++  }
++  return error::kNoError;
++}
++
++error::Error GLES2DecoderPassthroughImpl::HandleReleaseTexImage2DCHROMIUM(
++    uint32_t immediate_data_size,
++    const volatile void* cmd_data) {
++  const volatile gles2::cmds::ReleaseTexImage2DCHROMIUM& c =
++      *static_cast<const volatile gles2::cmds::ReleaseTexImage2DCHROMIUM*>(
++          cmd_data);
++  GLenum target = static_cast<GLenum>(c.target);
++  GLint imageId = static_cast<GLint>(c.imageId);
++  error::Error error = DoReleaseTexImage2DCHROMIUM(target, imageId);
++  if (error != error::kNoError) {
++    return error;
++  }
++  return error::kNoError;
++}
++
+ error::Error GLES2DecoderPassthroughImpl::HandleTraceEndCHROMIUM(
+     uint32_t immediate_data_size,
+     const volatile void* cmd_data) {
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.cc b/gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.cc
+index 1ab9e6d8a2a09..8aa9a7703ced9 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.cc
++++ gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.cc
+@@ -1402,6 +1402,19 @@ void GLES2DecoderTestBase::DoDeleteTexture(
+   }
+ }
+ 
++void GLES2DecoderTestBase::DoBindTexImage2DCHROMIUM(GLenum target,
++                                                    GLint image_id) {
++  cmds::BindTexImage2DCHROMIUM bind_tex_image_2d_cmd;
++  bind_tex_image_2d_cmd.Init(target, image_id);
++  EXPECT_CALL(*gl_, GetError())
++      .Times(AtMost(2))
++      .WillOnce(Return(GL_NO_ERROR))
++      .WillOnce(Return(GL_NO_ERROR))
++      .RetiresOnSaturation();
++  EXPECT_EQ(error::kNoError, ExecuteCmd(bind_tex_image_2d_cmd));
++  EXPECT_EQ(GL_NO_ERROR, GetGLError());
++}
++
+ void GLES2DecoderTestBase::DoTexImage2D(GLenum target,
+                                         GLint level,
+                                         GLenum internal_format,
+diff --git a/gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.h b/gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.h
+index db9c633328c79..7773b9f73236f 100644
+--- gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.h
++++ gpu/command_buffer/service/gles2_cmd_decoder_unittest_base.h
+@@ -343,6 +343,7 @@ class GLES2DecoderTestBase : public ::testing::TestWithParam<bool>,
+                               GLint border,
+                               GLsizei size,
+                               uint32_t bucket_id);
++  void DoBindTexImage2DCHROMIUM(GLenum target, GLint image_id);
+   void DoTexImage2D(GLenum target,
+                     GLint level,
+                     GLenum internal_format,
+diff --git a/gpu/command_buffer/tests/decoder_perftest.cc b/gpu/command_buffer/tests/decoder_perftest.cc
+index 47b3222e732f1..8010a4ef99066 100644
+--- gpu/command_buffer/tests/decoder_perftest.cc
++++ gpu/command_buffer/tests/decoder_perftest.cc
+@@ -265,6 +265,15 @@ class RecordReplayContext : public GpuControl {
+ 
+   const Capabilities& GetCapabilities() const override { return capabilities_; }
+ 
++  int32_t CreateImage(ClientBuffer buffer,
++                      size_t width,
++                      size_t height) override {
++    NOTIMPLEMENTED();
++    return -1;
++  }
++
++  void DestroyImage(int32_t id) override { NOTREACHED(); }
++
+   void SignalQuery(uint32_t query, base::OnceClosure callback) override {
+     NOTREACHED();
+   }
+diff --git a/gpu/command_buffer/tests/gl_manager.cc b/gpu/command_buffer/tests/gl_manager.cc
+index 62d7145ebff4e..52f4a676a702b 100644
+--- gpu/command_buffer/tests/gl_manager.cc
++++ gpu/command_buffer/tests/gl_manager.cc
+@@ -497,6 +497,69 @@ const Capabilities& GLManager::GetCapabilities() const {
+   return capabilities_;
+ }
+ 
++int32_t GLManager::CreateImage(ClientBuffer buffer,
++                               size_t width,
++                               size_t height) {
++  gfx::Size size(width, height);
++  scoped_refptr<gl::GLImage> gl_image;
++
++#if BUILDFLAG(IS_MAC)
++  if (use_iosurface_memory_buffers_) {
++    IOSurfaceGpuMemoryBuffer* gpu_memory_buffer =
++        IOSurfaceGpuMemoryBuffer::FromClientBuffer(buffer);
++    unsigned internalformat =
++        gl::BufferFormatToGLInternalFormat(gpu_memory_buffer->GetFormat());
++    const uint32_t io_surface_plane = 0;
++    scoped_refptr<gl::GLImageIOSurface> image(
++        gl::GLImageIOSurface::Create(size, internalformat));
++    if (!image->Initialize(gpu_memory_buffer->iosurface(), io_surface_plane,
++                           gfx::GenericSharedMemoryId(1),
++                           gfx::BufferFormat::BGRA_8888)) {
++      return -1;
++    }
++    gl_image = image;
++  }
++#endif  // BUILDFLAG(IS_MAC)
++
++  if (use_native_pixmap_memory_buffers_) {
++    gfx::GpuMemoryBuffer* gpu_memory_buffer =
++        reinterpret_cast<gfx::GpuMemoryBuffer*>(buffer);
++    DCHECK(gpu_memory_buffer);
++    if (gpu_memory_buffer->GetType() == gfx::NATIVE_PIXMAP) {
++      gfx::GpuMemoryBufferHandle handle = gpu_memory_buffer->CloneHandle();
++      gfx::BufferFormat format = gpu_memory_buffer->GetFormat();
++      gl_image =
++          gpu_memory_buffer_factory_->AsImageFactory()
++              ->CreateImageForGpuMemoryBuffer(
++                  std::move(handle), size, format, gfx::BufferPlane::DEFAULT,
++                  gpu::kDisplayCompositorClientId, gpu::kNullSurfaceHandle);
++      if (!gl_image)
++        return -1;
++    }
++  }
++
++  if (!gl_image) {
++    GpuMemoryBufferImpl* gpu_memory_buffer =
++        GpuMemoryBufferImpl::FromClientBuffer(buffer);
++
++    gfx::BufferFormat format = gpu_memory_buffer->GetFormat();
++    auto image = base::MakeRefCounted<gl::GLImageRefCountedMemory>(size);
++    if (!image->Initialize(gpu_memory_buffer->bytes(), format)) {
++      return -1;
++    }
++    gl_image = image;
++  }
++
++  static int32_t next_id = 1;
++  int32_t new_id = next_id++;
++  image_manager_.AddImage(gl_image.get(), new_id);
++  return new_id;
++}
++
++void GLManager::DestroyImage(int32_t id) {
++  image_manager_.RemoveImage(id);
++}
++
+ void GLManager::SignalQuery(uint32_t query, base::OnceClosure callback) {
+   NOTREACHED();
+ }
+diff --git a/gpu/command_buffer/tests/gl_manager.h b/gpu/command_buffer/tests/gl_manager.h
+index f7a089408aeda..47d37434cabc2 100644
+--- gpu/command_buffer/tests/gl_manager.h
++++ gpu/command_buffer/tests/gl_manager.h
+@@ -145,6 +145,10 @@ class GLManager : private GpuControl {
+   // GpuControl implementation.
+   void SetGpuControlClient(GpuControlClient*) override;
+   const Capabilities& GetCapabilities() const override;
++  int32_t CreateImage(ClientBuffer buffer,
++                      size_t width,
++                      size_t height) override;
++  void DestroyImage(int32_t id) override;
+   void SignalQuery(uint32_t query, base::OnceClosure callback) override;
+   void CreateGpuFence(uint32_t gpu_fence_id, ClientGpuFence source) override;
+   void GetGpuFence(uint32_t gpu_fence_id,
+diff --git a/gpu/gles2_conform_support/egl/context.cc b/gpu/gles2_conform_support/egl/context.cc
+index ac5f54909306a..c8cca8f26cfdf 100644
+--- gpu/gles2_conform_support/egl/context.cc
++++ gpu/gles2_conform_support/egl/context.cc
+@@ -173,6 +173,15 @@ const gpu::Capabilities& Context::GetCapabilities() const {
+   return capabilities_;
+ }
+ 
++int32_t Context::CreateImage(ClientBuffer buffer, size_t width, size_t height) {
++  NOTREACHED();
++  return -1;
++}
++
++void Context::DestroyImage(int32_t id) {
++  NOTREACHED();
++}
++
+ void Context::SignalQuery(uint32_t query, base::OnceClosure callback) {
+   NOTREACHED();
+ }
+diff --git a/gpu/gles2_conform_support/egl/context.h b/gpu/gles2_conform_support/egl/context.h
+index 88507570aa062..edae298ca8e46 100644
+--- gpu/gles2_conform_support/egl/context.h
++++ gpu/gles2_conform_support/egl/context.h
+@@ -67,6 +67,10 @@ class Context : public base::RefCountedThreadSafe<Context>,
+   // GpuControl implementation.
+   void SetGpuControlClient(gpu::GpuControlClient*) override;
+   const gpu::Capabilities& GetCapabilities() const override;
++  int32_t CreateImage(ClientBuffer buffer,
++                      size_t width,
++                      size_t height) override;
++  void DestroyImage(int32_t id) override;
+   void SignalQuery(uint32_t query, base::OnceClosure callback) override;
+   void CreateGpuFence(uint32_t gpu_fence_id, ClientGpuFence source) override;
+   void GetGpuFence(uint32_t gpu_fence_id,
+diff --git a/gpu/ipc/client/command_buffer_proxy_impl.cc b/gpu/ipc/client/command_buffer_proxy_impl.cc
+index 15b5e1332184c..0e20b90112333 100644
+--- gpu/ipc/client/command_buffer_proxy_impl.cc
++++ gpu/ipc/client/command_buffer_proxy_impl.cc
+@@ -405,6 +405,70 @@ const gpu::Capabilities& CommandBufferProxyImpl::GetCapabilities() const {
+   return capabilities_;
+ }
+ 
++int32_t CommandBufferProxyImpl::CreateImage(ClientBuffer buffer,
++                                            size_t width,
++                                            size_t height) {
++  CheckLock();
++  base::AutoLock lock(last_state_lock_);
++  if (last_state_.error != gpu::error::kNoError)
++    return -1;
++
++  int32_t new_id = channel_->ReserveImageId();
++
++  gfx::GpuMemoryBuffer* gpu_memory_buffer =
++      reinterpret_cast<gfx::GpuMemoryBuffer*>(buffer);
++  DCHECK(gpu_memory_buffer);
++
++  // This handle is owned by the GPU process and must be passed to it or it
++  // will leak. In otherwords, do not early out on error between here and the
++  // sending of the CreateImage IPC below.
++  gfx::GpuMemoryBufferHandle handle = gpu_memory_buffer->CloneHandle();
++  bool requires_sync_token = handle.type == gfx::IO_SURFACE_BUFFER;
++
++  uint64_t image_fence_sync = 0;
++  if (requires_sync_token)
++    image_fence_sync = GenerateFenceSyncRelease();
++
++  DCHECK(gpu::IsImageFromGpuMemoryBufferFormatSupported(
++      gpu_memory_buffer->GetFormat(), capabilities_))
++      << gfx::BufferFormatToString(gpu_memory_buffer->GetFormat());
++  DCHECK(gpu::IsImageSizeValidForGpuMemoryBufferFormat(
++      gfx::Size(width, height), gpu_memory_buffer->GetFormat()))
++      << gfx::BufferFormatToString(gpu_memory_buffer->GetFormat());
++
++  auto params = mojom::CreateImageParams::New();
++  params->id = new_id;
++  params->gpu_memory_buffer = std::move(handle);
++  params->size = gfx::Size(width, height);
++  params->format = gpu_memory_buffer->GetFormat();
++  params->plane = gfx::BufferPlane::DEFAULT;
++  params->image_release_count = image_fence_sync;
++  command_buffer_->CreateImage(std::move(params));
++
++  if (image_fence_sync) {
++    gpu::SyncToken sync_token(GetNamespaceID(), GetCommandBufferID(),
++                              image_fence_sync);
++
++    // Force a synchronous IPC to validate sync token.
++    EnsureWorkVisible();
++    sync_token.SetVerifyFlush();
++
++    gpu_memory_buffer_manager_->SetDestructionSyncToken(gpu_memory_buffer,
++                                                        sync_token);
++  }
++
++  return new_id;
++}
++
++void CommandBufferProxyImpl::DestroyImage(int32_t id) {
++  CheckLock();
++  base::AutoLock lock(last_state_lock_);
++  if (last_state_.error != gpu::error::kNoError)
++    return;
++
++  command_buffer_->DestroyImage(id);
++}
++
+ void CommandBufferProxyImpl::SetLock(base::Lock* lock) {
+   lock_ = lock;
+ }
+diff --git a/gpu/ipc/client/command_buffer_proxy_impl.h b/gpu/ipc/client/command_buffer_proxy_impl.h
+index 16cb82027ca6e..f820353383848 100644
+--- gpu/ipc/client/command_buffer_proxy_impl.h
++++ gpu/ipc/client/command_buffer_proxy_impl.h
+@@ -125,6 +125,10 @@ class GPU_EXPORT CommandBufferProxyImpl : public gpu::CommandBuffer,
+   // gpu::GpuControl implementation:
+   void SetGpuControlClient(GpuControlClient* client) override;
+   const gpu::Capabilities& GetCapabilities() const override;
++  int32_t CreateImage(ClientBuffer buffer,
++                      size_t width,
++                      size_t height) override;
++  void DestroyImage(int32_t id) override;
+   void SignalQuery(uint32_t query, base::OnceClosure callback) override;
+   void CreateGpuFence(uint32_t gpu_fence_id, ClientGpuFence source) override;
+   void GetGpuFence(uint32_t gpu_fence_id,
+diff --git a/gpu/ipc/common/gpu_channel.mojom b/gpu/ipc/common/gpu_channel.mojom
+index 20ad182cfe529..ca6f51ad9c8ee 100644
+--- gpu/ipc/common/gpu_channel.mojom
++++ gpu/ipc/common/gpu_channel.mojom
+@@ -237,6 +237,15 @@ interface GpuChannel {
+   ReleaseSysmemBufferCollection(mojo_base.mojom.UnguessableToken id);
+ };
+ 
++struct CreateImageParams {
++  int32 id;
++  gfx.mojom.GpuMemoryBufferHandle gpu_memory_buffer;
++  gfx.mojom.Size size;
++  gfx.mojom.BufferFormat format;
++  gfx.mojom.BufferPlane plane;
++  uint64 image_release_count;
++};
++
+ // Interface used to issue commands to a specific CommandBuffer instance in the
+ // GPU process.
+ interface CommandBuffer {
+@@ -257,6 +266,17 @@ interface CommandBuffer {
+   // Requests retrieval of a GpuFenceHandle by ID.
+   GetGpuFenceHandle(uint32 id) => (gfx.mojom.GpuFenceHandle? fence_handle);
+ 
++  // Creates an image from an existing gpu memory buffer. The id that can be
++  // used to identify the image from a command buffer.
++  //
++  // TODO(crbug.com/1216120): Remove this once CreateImageCHROMIUM is gone.
++  CreateImage(CreateImageParams params);
++
++  // Destroys a previously created image identified by `id`.
++  //
++  // TODO(crbug.com/1216120): Remove this once CreateImageCHROMIUM is gone.
++  DestroyImage(int32 id);
++
+   // Asynchronously waits until the SyncToken is signaled, then sends a
+   // corresponding SignalAck on the CommandBufferClient interface, using
+   // `signal_id` to identify this request.
+diff --git a/gpu/ipc/in_process_command_buffer.cc b/gpu/ipc/in_process_command_buffer.cc
+index e3e135294c6b6..d0bb7081c3100 100644
+--- gpu/ipc/in_process_command_buffer.cc
++++ gpu/ipc/in_process_command_buffer.cc
+@@ -96,6 +96,8 @@ namespace gpu {
+ 
+ namespace {
+ 
++base::AtomicSequenceNumber g_next_image_id;
++
+ template <typename T>
+ base::OnceClosure WrapTaskWithResult(base::OnceCallback<T(void)> task,
+                                      T* result,
+@@ -1062,6 +1064,118 @@ const GpuFeatureInfo& InProcessCommandBuffer::GetGpuFeatureInfo() const {
+   return task_executor_->gpu_feature_info();
+ }
+ 
++int32_t InProcessCommandBuffer::CreateImage(ClientBuffer buffer,
++                                            size_t width,
++                                            size_t height) {
++  DCHECK(gpu_memory_buffer_manager_);
++  gfx::GpuMemoryBuffer* gpu_memory_buffer =
++      reinterpret_cast<gfx::GpuMemoryBuffer*>(buffer);
++  DCHECK(gpu_memory_buffer);
++
++  int32_t new_id = g_next_image_id.GetNext() + 1;
++
++  DCHECK(IsImageFromGpuMemoryBufferFormatSupported(
++      gpu_memory_buffer->GetFormat(), capabilities_));
++
++  // This handle is owned by the GPU thread and must be passed to it or it
++  // will leak. In otherwords, do not early out on error between here and the
++  // queuing of the CreateImage task below.
++  gfx::GpuMemoryBufferHandle handle = gpu_memory_buffer->CloneHandle();
++  bool requires_sync_point = handle.type == gfx::IO_SURFACE_BUFFER;
++
++  uint64_t fence_sync = 0;
++  if (requires_sync_point)
++    fence_sync = GenerateFenceSyncRelease();
++
++  ScheduleGpuTask(base::BindOnce(
++      &InProcessCommandBuffer::CreateImageOnGpuThread,
++      gpu_thread_weak_ptr_factory_.GetWeakPtr(), new_id, std::move(handle),
++      gfx::Size(base::checked_cast<int>(width),
++                base::checked_cast<int>(height)),
++      gpu_memory_buffer->GetFormat(), fence_sync));
++
++  if (fence_sync) {
++    SyncToken sync_token(GetNamespaceID(), GetCommandBufferID(), fence_sync);
++    sync_token.SetVerifyFlush();
++    gpu_memory_buffer_manager_->SetDestructionSyncToken(gpu_memory_buffer,
++                                                        sync_token);
++  }
++
++  return new_id;
++}
++
++void InProcessCommandBuffer::CreateImageOnGpuThread(
++    int32_t id,
++    gfx::GpuMemoryBufferHandle handle,
++    const gfx::Size& size,
++    gfx::BufferFormat format,
++    uint64_t fence_sync) {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
++  gles2::ImageManager* image_manager = task_executor_->image_manager();
++  DCHECK(image_manager);
++  if (image_manager->LookupImage(id)) {
++    LOG(ERROR) << "Image already exists with same ID.";
++    return;
++  }
++
++  switch (handle.type) {
++    case gfx::SHARED_MEMORY_BUFFER: {
++      if (!base::IsValueInRangeForNumericType<size_t>(handle.stride)) {
++        LOG(ERROR) << "Invalid stride for image.";
++        return;
++      }
++      auto image = base::MakeRefCounted<gl::GLImageSharedMemory>(size);
++      if (!image->Initialize(handle.region, handle.id, format, handle.offset,
++                             handle.stride)) {
++        LOG(ERROR) << "Failed to initialize image.";
++        return;
++      }
++
++      image_manager->AddImage(image.get(), id);
++      break;
++    }
++    default: {
++      if (!image_factory_) {
++        LOG(ERROR) << "Image factory missing but required by buffer type.";
++        return;
++      }
++
++      scoped_refptr<gl::GLImage> image =
++          image_factory_->CreateImageForGpuMemoryBuffer(
++              std::move(handle), size, format, gfx::BufferPlane::DEFAULT,
++              kDisplayCompositorClientId, kNullSurfaceHandle);
++      if (!image.get()) {
++        LOG(ERROR) << "Failed to create image for buffer.";
++        return;
++      }
++
++      image_manager->AddImage(image.get(), id);
++      break;
++    }
++  }
++
++  if (fence_sync)
++    sync_point_client_state_->ReleaseFenceSync(fence_sync);
++}
++
++void InProcessCommandBuffer::DestroyImage(int32_t id) {
++  ScheduleGpuTask(
++      base::BindOnce(&InProcessCommandBuffer::DestroyImageOnGpuThread,
++                     gpu_thread_weak_ptr_factory_.GetWeakPtr(), id));
++}
++
++void InProcessCommandBuffer::DestroyImageOnGpuThread(int32_t id) {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
++  gles2::ImageManager* image_manager = task_executor_->image_manager();
++  DCHECK(image_manager);
++  if (!image_manager->LookupImage(id)) {
++    LOG(ERROR) << "Image with ID doesn't exist.";
++    return;
++  }
++
++  image_manager->RemoveImage(id);
++}
++
+ void InProcessCommandBuffer::OnConsoleMessage(int32_t id,
+                                               const std::string& message) {
+   // TODO(piman): implement this.
+diff --git a/gpu/ipc/in_process_command_buffer.h b/gpu/ipc/in_process_command_buffer.h
+index fd2bac4bf1351..20b099de02cab 100644
+--- gpu/ipc/in_process_command_buffer.h
++++ gpu/ipc/in_process_command_buffer.h
+@@ -61,6 +61,7 @@ class GLShareGroup;
+ 
+ namespace gfx {
+ struct GpuFenceHandle;
++class Size;
+ }
+ 
+ namespace ui {
+@@ -152,6 +153,10 @@ class GL_IN_PROCESS_CONTEXT_EXPORT InProcessCommandBuffer
+   void SetGpuControlClient(GpuControlClient*) override;
+   // GetCapabilities() can be called on any thread.
+   const Capabilities& GetCapabilities() const override;
++  int32_t CreateImage(ClientBuffer buffer,
++                      size_t width,
++                      size_t height) override;
++  void DestroyImage(int32_t id) override;
+   void SignalQuery(uint32_t query_id, base::OnceClosure callback) override;
+   void CreateGpuFence(uint32_t gpu_fence_id, ClientGpuFence source) override;
+   void GetGpuFence(uint32_t gpu_fence_id,
+@@ -322,6 +327,13 @@ class GL_IN_PROCESS_CONTEXT_EXPORT InProcessCommandBuffer
+                                          scoped_refptr<Buffer> buffer);
+   void DestroyTransferBufferOnGpuThread(int32_t id);
+ 
++  void CreateImageOnGpuThread(int32_t id,
++                              gfx::GpuMemoryBufferHandle handle,
++                              const gfx::Size& size,
++                              gfx::BufferFormat format,
++                              uint64_t fence_sync);
++  void DestroyImageOnGpuThread(int32_t id);
++
+   void SetGetBufferOnGpuThread(int32_t shm_id, base::WaitableEvent* completion);
+ 
+   void CreateGpuFenceOnGpuThread(uint32_t gpu_fence_id,
+diff --git a/gpu/ipc/service/command_buffer_stub.cc b/gpu/ipc/service/command_buffer_stub.cc
+index e62d3ecc9577a..0c08d33a7eb8c 100644
+--- gpu/ipc/service/command_buffer_stub.cc
++++ gpu/ipc/service/command_buffer_stub.cc
+@@ -545,6 +545,14 @@ void CommandBufferStub::GetGpuFenceHandle(uint32_t id,
+   std::move(callback).Run(gfx::GpuFenceHandle());
+ }
+ 
++void CommandBufferStub::CreateImage(mojom::CreateImageParamsPtr params) {
++  DLOG(ERROR) << "CreateImage unsupported.";
++}
++
++void CommandBufferStub::DestroyImage(int32_t id) {
++  DLOG(ERROR) << "DestroyImage unsupported.";
++}
++
+ void CommandBufferStub::OnDestroyTransferBuffer(int32_t id) {
+   TRACE_EVENT0("gpu", "CommandBufferStub::OnDestroyTransferBuffer");
+ 
+diff --git a/gpu/ipc/service/command_buffer_stub.h b/gpu/ipc/service/command_buffer_stub.h
+index 2f06894795cd8..7d3c6b018d536 100644
+--- gpu/ipc/service/command_buffer_stub.h
++++ gpu/ipc/service/command_buffer_stub.h
+@@ -217,6 +217,8 @@ class GPU_IPC_SERVICE_EXPORT CommandBufferStub
+                                 gfx::GpuFenceHandle handle) override;
+   void GetGpuFenceHandle(uint32_t id,
+                          GetGpuFenceHandleCallback callback) override;
++  void CreateImage(mojom::CreateImageParamsPtr params) override;
++  void DestroyImage(int32_t id) override;
+   void SignalSyncToken(const SyncToken& sync_token, uint32_t id) override;
+   void SignalQuery(uint32_t query, uint32_t id) override;
+   void BindMediaReceiver(mojo::GenericPendingAssociatedReceiver receiver,
+diff --git a/gpu/ipc/service/gles2_command_buffer_stub.cc b/gpu/ipc/service/gles2_command_buffer_stub.cc
+index 4529e2b16e03b..edbb14e0c564e 100644
+--- gpu/ipc/service/gles2_command_buffer_stub.cc
++++ gpu/ipc/service/gles2_command_buffer_stub.cc
+@@ -503,6 +503,68 @@ void GLES2CommandBufferStub::GetGpuFenceHandle(
+   std::move(callback).Run(std::move(handle));
+ }
+ 
++void GLES2CommandBufferStub::CreateImage(mojom::CreateImageParamsPtr params) {
++  TRACE_EVENT0("gpu", "GLES2CommandBufferStub::OnCreateImage");
++  const int32_t id = params->id;
++  const gfx::Size& size = params->size;
++  const gfx::BufferFormat& format = params->format;
++  const gfx::BufferPlane& plane = params->plane;
++  const uint64_t image_release_count = params->image_release_count;
++  ScopedContextOperation operation(*this);
++  if (!operation.is_context_current())
++    return;
++
++  gles2::ImageManager* image_manager = channel_->image_manager();
++  DCHECK(image_manager);
++  if (image_manager->LookupImage(id)) {
++    LOG(ERROR) << "Image already exists with same ID.";
++    return;
++  }
++
++  if (!gpu::IsImageFromGpuMemoryBufferFormatSupported(
++          format, gles2_decoder_->GetCapabilities())) {
++    LOG(ERROR) << "Format is not supported.";
++    return;
++  }
++
++  if (!gpu::IsImageSizeValidForGpuMemoryBufferFormat(size, format)) {
++    LOG(ERROR) << "Invalid image size for format.";
++    return;
++  }
++
++  if (!gpu::IsPlaneValidForGpuMemoryBufferFormat(plane, format)) {
++    LOG(ERROR) << "Invalid plane " << gfx::BufferPlaneToString(plane) << " for "
++               << gfx::BufferFormatToString(format);
++    return;
++  }
++
++  scoped_refptr<gl::GLImage> image = channel()->CreateImageForGpuMemoryBuffer(
++      std::move(params->gpu_memory_buffer), size, format, plane,
++      surface_handle_);
++  if (!image.get())
++    return;
++
++  image_manager->AddImage(image.get(), id);
++  if (image_release_count)
++    sync_point_client_state_->ReleaseFenceSync(image_release_count);
++}
++
++void GLES2CommandBufferStub::DestroyImage(int32_t id) {
++  TRACE_EVENT0("gpu", "GLES2CommandBufferStub::OnDestroyImage");
++  ScopedContextOperation operation(*this);
++  if (!operation.is_context_current())
++    return;
++
++  gles2::ImageManager* image_manager = channel_->image_manager();
++  DCHECK(image_manager);
++  if (!image_manager->LookupImage(id)) {
++    LOG(ERROR) << "Image with ID doesn't exist.";
++    return;
++  }
++
++  image_manager->RemoveImage(id);
++}
++
+ void GLES2CommandBufferStub::OnSwapBuffers(uint64_t swap_id, uint32_t flags) {
+   pending_swap_completed_params_.push_back({swap_id, flags});
+   pending_presented_params_.push_back({swap_id, flags});
+diff --git a/gpu/ipc/service/gles2_command_buffer_stub.h b/gpu/ipc/service/gles2_command_buffer_stub.h
+index ee8ef7e560b40..28c0b1b958181 100644
+--- gpu/ipc/service/gles2_command_buffer_stub.h
++++ gpu/ipc/service/gles2_command_buffer_stub.h
+@@ -68,6 +68,8 @@ class GPU_IPC_SERVICE_EXPORT GLES2CommandBufferStub
+                                 gfx::GpuFenceHandle handle) override;
+   void GetGpuFenceHandle(uint32_t gpu_fence_id,
+                          GetGpuFenceHandleCallback callback) override;
++  void CreateImage(mojom::CreateImageParamsPtr params) override;
++  void DestroyImage(int32_t id) override;
+ 
+   void OnSwapBuffers(uint64_t swap_id, uint32_t flags) override;
+ 
+diff --git a/gpu/ipc/service/gpu_memory_buffer_factory_io_surface.h b/gpu/ipc/service/gpu_memory_buffer_factory_io_surface.h
+index bdc39b7589913..73153f6fe0271 100644
+--- gpu/ipc/service/gpu_memory_buffer_factory_io_surface.h
++++ gpu/ipc/service/gpu_memory_buffer_factory_io_surface.h
+@@ -77,7 +77,8 @@ class GPU_IPC_SERVICE_EXPORT GpuMemoryBufferFactoryIOSurface
+   typedef std::unordered_map<IOSurfaceMapKey,
+                              base::ScopedCFTypeRef<IOSurfaceRef>>
+       IOSurfaceMap;
+-
++  // TODO(reveman): Remove |io_surfaces_| and allow IOSurface backed GMBs to be
++  // used with any GPU process by passing a mach_port to CreateImageCHROMIUM.
+   IOSurfaceMap io_surfaces_;
+   base::Lock io_surfaces_lock_;
+ };
+diff --git a/ppapi/proxy/ppapi_command_buffer_proxy.cc b/ppapi/proxy/ppapi_command_buffer_proxy.cc
+index 52dbfdac7b4f3..a76aaab2f9ab9 100644
+--- ppapi/proxy/ppapi_command_buffer_proxy.cc
++++ ppapi/proxy/ppapi_command_buffer_proxy.cc
+@@ -257,6 +257,17 @@ const gpu::Capabilities& PpapiCommandBufferProxy::GetCapabilities() const {
+   return capabilities_;
+ }
+ 
++int32_t PpapiCommandBufferProxy::CreateImage(ClientBuffer buffer,
++                                             size_t width,
++                                             size_t height) {
++  NOTREACHED();
++  return -1;
++}
++
++void PpapiCommandBufferProxy::DestroyImage(int32_t id) {
++  NOTREACHED();
++}
++
+ bool PpapiCommandBufferProxy::Send(IPC::Message* msg) {
+   DCHECK(last_state_.error == gpu::error::kNoError);
+ 
+diff --git a/ppapi/proxy/ppapi_command_buffer_proxy.h b/ppapi/proxy/ppapi_command_buffer_proxy.h
+index 5a9dffa43f8d3..ee2bcec1d4915 100644
+--- ppapi/proxy/ppapi_command_buffer_proxy.h
++++ ppapi/proxy/ppapi_command_buffer_proxy.h
+@@ -62,6 +62,10 @@ class PPAPI_PROXY_EXPORT PpapiCommandBufferProxy : public gpu::CommandBuffer,
+   // gpu::GpuControl implementation:
+   void SetGpuControlClient(gpu::GpuControlClient*) override;
+   const gpu::Capabilities& GetCapabilities() const override;
++  int32_t CreateImage(ClientBuffer buffer,
++                      size_t width,
++                      size_t height) override;
++  void DestroyImage(int32_t id) override;
+   void SignalQuery(uint32_t query, base::OnceClosure callback) override;
+   void CreateGpuFence(uint32_t gpu_fence_id, ClientGpuFence source) override;
+   void GetGpuFence(uint32_t gpu_fence_id,
+diff --git a/third_party/blink/renderer/platform/graphics/gpu/drawing_buffer_test_helpers.h b/third_party/blink/renderer/platform/graphics/gpu/drawing_buffer_test_helpers.h
+index 45e41d2d83f0c..f27b2006556f9 100644
+--- third_party/blink/renderer/platform/graphics/gpu/drawing_buffer_test_helpers.h
++++ third_party/blink/renderer/platform/graphics/gpu/drawing_buffer_test_helpers.h
+@@ -204,8 +204,10 @@ class GLES2InterfaceForTests : public gpu::gles2::GLES2InterfaceStub,
+   void ProduceTextureDirectCHROMIUM(GLuint texture, GLbyte* mailbox) override {
+     ++current_mailbox_byte_;
+     memset(mailbox, current_mailbox_byte_, GL_MAILBOX_SIZE_CHROMIUM);
+-    ASSERT_TRUE(texture_sizes_.Contains(texture));
+-    most_recently_produced_size_ = texture_sizes_.at(texture);
++    if (!create_image_chromium_fail_) {
++      ASSERT_TRUE(texture_sizes_.Contains(texture));
++      most_recently_produced_size_ = texture_sizes_.at(texture);
++    }
+   }
+ 
+   void TexImage2D(GLenum target,
+@@ -223,6 +225,44 @@ class GLES2InterfaceForTests : public gpu::gles2::GLES2InterfaceStub,
+     }
+   }
+ 
++  GLuint CreateImageCHROMIUM(ClientBuffer buffer,
++                             GLsizei width,
++                             GLsizei height,
++                             GLenum internalformat) override {
++    if (create_image_chromium_fail_)
++      return 0;
++    image_sizes_.Set(current_image_id_, gfx::Size(width, height));
++    return current_image_id_++;
++  }
++
++  MOCK_METHOD1(DestroyImageMock, void(GLuint imageId));
++  void DestroyImageCHROMIUM(GLuint image_id) override {
++    image_sizes_.erase(image_id);
++    // No textures should be bound to this.
++    CHECK(image_to_texture_map_.find(image_id) == image_to_texture_map_.end());
++    image_sizes_.erase(image_id);
++    DestroyImageMock(image_id);
++  }
++
++  MOCK_METHOD1(BindTexImage2DMock, void(GLint imageId));
++  void BindTexImage2DCHROMIUM(GLenum target, GLint image_id) override {
++    if (target == kImageCHROMIUMTarget) {
++      GLuint value = bound_textures_.find(target)->value;
++      texture_sizes_.Set(value, image_sizes_.find(image_id)->value);
++      image_to_texture_map_.Set(image_id, value);
++      BindTexImage2DMock(image_id);
++    }
++  }
++
++  MOCK_METHOD1(ReleaseTexImage2DMock, void(GLint imageId));
++  void ReleaseTexImage2DCHROMIUM(GLenum target, GLint image_id) override {
++    if (target == kImageCHROMIUMTarget) {
++      image_sizes_.Set(current_image_id_, gfx::Size());
++      image_to_texture_map_.erase(image_id);
++      ReleaseTexImage2DMock(image_id);
++    }
++  }
++
+   void GenTextures(GLsizei n, GLuint* textures) override {
+     static GLuint id = 1;
+     for (GLsizei i = 0; i < n; ++i)
+@@ -317,6 +357,10 @@ class GLES2InterfaceForTests : public gpu::gles2::GLES2InterfaceStub,
+     return most_recently_produced_size_;
+   }
+ 
++  void SetCreateImageChromiumFail(bool fail) {
++    create_image_chromium_fail_ = fail;
++  }
++
+   // Saves current GL state for later verification.
+   void SaveState() { saved_state_ = state_; }
+   void VerifyStateHasNotChangedSinceSave() const {
+@@ -388,6 +432,7 @@ class GLES2InterfaceForTests : public gpu::gles2::GLES2InterfaceStub,
+   gpu::SyncToken most_recently_waited_sync_token_;
+   GLbyte current_mailbox_byte_ = 0;
+   gfx::Size most_recently_produced_size_;
++  bool create_image_chromium_fail_ = false;
+   GLuint current_image_id_ = 1;
+   HashMap<GLuint, gfx::Size> texture_sizes_;
+   HashMap<GLuint, gfx::Size> image_sizes_;
+-- 
+2.36.1.windows.1
+
