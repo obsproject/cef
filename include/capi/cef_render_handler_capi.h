@@ -33,7 +33,7 @@
 // by hand. See the translator.README.txt file in the tools directory for
 // more information.
 //
-// $hash=ff7e4de5301fb3f098c4267d04344ee69a9eb809$
+// $hash=b737a187f428270dd9ed8b7ecf0e1e1bede77139$
 //
 
 #ifndef CEF_INCLUDE_CAPI_CEF_RENDER_HANDLER_CAPI_H_
@@ -179,6 +179,18 @@ typedef struct _cef_render_handler_t {
                                            size_t dirtyRectsCount,
                                            cef_rect_t const* dirtyRects,
                                            void* shared_handle);
+
+  ///
+  // New implementation by Jim. Doesn't used keyed_mutexes. There's a bool which
+  // signals a new texture.
+  ///
+  void(CEF_CALLBACK* on_accelerated_paint2)(struct _cef_render_handler_t* self,
+                                            struct _cef_browser_t* browser,
+                                            cef_paint_element_type_t type,
+                                            size_t dirtyRectsCount,
+                                            cef_rect_t const* dirtyRects,
+                                            void* shared_handle,
+                                            int new_texture);
 
   ///
   // Called when the user starts dragging content in the web view. Contextual
