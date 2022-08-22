@@ -1,0 +1,13 @@
+diff --git a/ui/views/linux_ui/linux_ui.cc b/ui/views/linux_ui/linux_ui.cc
+index 3218eb1c3bcad9039f038b5d5caa1e3dc8f51978..7a7ed239ad54000e0b5bdac26a3c52cd01e7133c 100644
+--- ui/views/linux_ui/linux_ui.cc
++++ ui/views/linux_ui/linux_ui.cc
+@@ -25,7 +25,7 @@ void LinuxUI::SetInstance(std::unique_ptr<LinuxUI> instance) {
+ 
+   SkiaFontDelegate::SetInstance(g_linux_ui);
+ #if BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CHROMECAST)
+-  ShellDialogLinux::SetInstance(g_linux_ui);
++//  ShellDialogLinux::SetInstance(g_linux_ui);
+ #endif
+   ui::SetTextEditKeyBindingsDelegate(g_linux_ui);
+ 
