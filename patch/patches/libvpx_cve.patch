@@ -1,0 +1,90 @@
+diff --git a/third_party/libvpx/source/libvpx/test/encode_api_test.cc b/third_party/libvpx/source/libvpx/test/encode_api_test.cc
+index 6f61c775028f844048d0a1b9743ced0071037881..fa568063effd95a38db4ef332b09078f2009fcc3 100644
+--- third_party/libvpx/source/libvpx/test/encode_api_test.cc
++++ third_party/libvpx/source/libvpx/test/encode_api_test.cc
+@@ -304,7 +304,6 @@ TEST(EncodeAPI, SetRoi) {
+ 
+ void InitCodec(const vpx_codec_iface_t &iface, int width, int height,
+                vpx_codec_ctx_t *enc, vpx_codec_enc_cfg_t *cfg) {
+-  ASSERT_EQ(vpx_codec_enc_config_default(&iface, cfg, 0), VPX_CODEC_OK);
+   cfg->g_w = width;
+   cfg->g_h = height;
+   cfg->g_lag_in_frames = 0;
+@@ -341,7 +340,7 @@ TEST(EncodeAPI, ConfigChangeThreadCount) {
+         ~Encoder() { EXPECT_EQ(vpx_codec_destroy(&ctx), VPX_CODEC_OK); }
+         vpx_codec_ctx_t ctx = {};
+       } enc;
+-
++      ASSERT_EQ(vpx_codec_enc_config_default(iface, &cfg, 0), VPX_CODEC_OK);
+       EXPECT_NO_FATAL_FAILURE(
+           InitCodec(*iface, kWidth, kHeight, &enc.ctx, &cfg));
+       if (IsVP9(iface)) {
+@@ -360,4 +359,52 @@ TEST(EncodeAPI, ConfigChangeThreadCount) {
+   }
+ }
+ 
++TEST(EncodeAPI, ConfigResizeChangeThreadCount) {
++  constexpr int kInitWidth = 1024;
++  constexpr int kInitHeight = 1024;
++
++  for (const auto *iface : kCodecIfaces) {
++    SCOPED_TRACE(vpx_codec_iface_name(iface));
++    if (!IsVP9(iface)) {
++      GTEST_SKIP() << "TODO(https://crbug.com/1486441) remove this condition "
++                      "after VP8 is fixed.";
++    }
++    for (int i = 0; i < (IsVP9(iface) ? 2 : 1); ++i) {
++      vpx_codec_enc_cfg_t cfg = {};
++      struct Encoder {
++        ~Encoder() { EXPECT_EQ(vpx_codec_destroy(&ctx), VPX_CODEC_OK); }
++        vpx_codec_ctx_t ctx = {};
++      } enc;
++
++      ASSERT_EQ(vpx_codec_enc_config_default(iface, &cfg, 0), VPX_CODEC_OK);
++      // Start in threaded mode to ensure resolution and thread related
++      // allocations are updated correctly across changes in resolution and
++      // thread counts. See https://crbug.com/1486441.
++      cfg.g_threads = 4;
++      EXPECT_NO_FATAL_FAILURE(
++          InitCodec(*iface, kInitWidth, kInitHeight, &enc.ctx, &cfg));
++      if (IsVP9(iface)) {
++        EXPECT_EQ(vpx_codec_control_(&enc.ctx, VP9E_SET_TILE_COLUMNS, 6),
++                  VPX_CODEC_OK);
++        EXPECT_EQ(vpx_codec_control_(&enc.ctx, VP9E_SET_ROW_MT, i),
++                  VPX_CODEC_OK);
++      }
++
++      cfg.g_w = 1000;
++      cfg.g_h = 608;
++      EXPECT_EQ(vpx_codec_enc_config_set(&enc.ctx, &cfg), VPX_CODEC_OK)
++          << vpx_codec_error_detail(&enc.ctx);
++
++      cfg.g_w = 16;
++      cfg.g_h = 720;
++
++      for (const auto threads : { 1, 4, 8, 6, 2, 1 }) {
++        cfg.g_threads = threads;
++        EXPECT_NO_FATAL_FAILURE(EncodeWithConfig(cfg, &enc.ctx))
++            << "iteration: " << i << " threads: " << threads;
++      }
++    }
++  }
++}
++
+ }  // namespace
+diff --git a/third_party/libvpx/source/libvpx//vp8/encoder/onyx_if.c b/third_party/libvpx/source/libvpx//vp8/encoder/onyx_if.c
+index ffb3867dd1ef315c0bca748fa5f18df987cbc373..bdfd249df11387f1eb5b8ccd9f4b367c07a7aa93 100644
+--- third_party/libvpx/source/libvpx/vp8/encoder/onyx_if.c
++++ third_party/libvpx/source/libvpx/vp8/encoder/onyx_if.c
+@@ -1443,6 +1443,11 @@ void vp8_change_config(VP8_COMP *cpi, VP8_CONFIG *oxcf) {
+   last_h = cpi->oxcf.Height;
+   prev_number_of_layers = cpi->oxcf.number_of_layers;
+ 
++  if (cpi->initial_width) {
++    // TODO(https://crbug.com/1486441): Allow changing thread counts; the
++    // allocation is done once in vp8_create_compressor().
++    oxcf->multi_threaded = cpi->oxcf.multi_threaded;
++  }
+   cpi->oxcf = *oxcf;
+ 
+   switch (cpi->oxcf.Mode) {
