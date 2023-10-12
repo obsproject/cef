@@ -277,15 +277,13 @@ void CefRenderHandlerCToCpp::OnAcceleratedPaint2(CefRefPtr<CefBrowser> browser,
   if (CEF_MEMBER_MISSING(_struct, on_accelerated_paint2))
     return;
 
-  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
-
   // Verify param: browser; type: refptr_diff
   DCHECK(browser.get());
   if (!browser.get())
     return;
   // Verify param: shared_handle; type: simple_byaddr
-  DCHECK(shared_handle);
-  if (!shared_handle)
+  DCHECK(!new_texture || shared_handle);
+  if (new_texture && !shared_handle)
     return;
 
   // Translate param: dirtyRects; type: simple_vec_byref_const
