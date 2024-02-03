@@ -10,7 +10,8 @@ class CefRenderWidgetHostViewOSR;
 
 class CefVideoConsumerOSR : public viz::mojom::FrameSinkVideoConsumer {
  public:
-  explicit CefVideoConsumerOSR(CefRenderWidgetHostViewOSR* view);
+  explicit CefVideoConsumerOSR(CefRenderWidgetHostViewOSR* view,
+                               bool use_shared_texture);
 
   CefVideoConsumerOSR(const CefVideoConsumerOSR&) = delete;
   CefVideoConsumerOSR& operator=(const CefVideoConsumerOSR&) = delete;
@@ -35,6 +36,8 @@ class CefVideoConsumerOSR : public viz::mojom::FrameSinkVideoConsumer {
   void OnLog(const std::string& message) override {}
   void OnNewSubCaptureTargetVersion(
       uint32_t sub_capture_target_version) override {}
+
+  const bool use_shared_texture_ = false;
 
   CefRenderWidgetHostViewOSR* const view_;
   std::unique_ptr<viz::ClientFrameSinkVideoCapturer> video_capturer_;

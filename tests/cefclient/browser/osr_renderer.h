@@ -61,6 +61,8 @@ class OsrRenderer {
 
   void ClearPopupRects();
 
+  const OsrRendererSettings& settings() const { return settings_; }
+
  private:
   CefRect GetPopupRectInWebView(const CefRect& original_rect);
 

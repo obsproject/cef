@@ -11,6 +11,12 @@
 #include "media/capture/mojom/video_capture_types.mojom.h"
 #include "ui/gfx/skbitmap_operations.h"
 
+#if BUILDFLAG(IS_WIN)
+#include "ipc/service/gpu_memory_buffer_factory_dxgi.h"
+#elif BUILDFLAG(IS_APPLE)
+#include "ipc/service/gpu_memory_buffer_factory_io_surface.h"
+#endif
+
 namespace {
 
 // Helper to always call Done() at the end of OnFrameCaptured().
@@ -28,8 +34,11 @@ class ScopedVideoFrameDone {
 
 }  // namespace
 
-CefVideoConsumerOSR::CefVideoConsumerOSR(CefRenderWidgetHostViewOSR* view)
-    : view_(view), video_capturer_(view->CreateVideoCapturer()) {
+CefVideoConsumerOSR::CefVideoConsumerOSR(CefRenderWidgetHostViewOSR* view,
+                                         bool use_shared_texture)
+    : use_shared_texture_(use_shared_texture),
+      view_(view),
+      video_capturer_(view->CreateVideoCapturer()) {
   video_capturer_->SetFormat(media::PIXEL_FORMAT_ARGB);
 
   // Always use the highest resolution within constraints that doesn't exceed
@@ -45,7 +54,10 @@ CefVideoConsumerOSR::~CefVideoConsumerOSR() = default;
 
 void CefVideoConsumerOSR::SetActive(bool active) {
   if (active) {
-    video_capturer_->Start(this, viz::mojom::BufferFormatPreference::kDefault);
+    video_capturer_->Start(
+        this, use_shared_texture_
+                  ? viz::mojom::BufferFormatPreference::kPreferGpuMemoryBuffer
+                  : viz::mojom::BufferFormatPreference::kDefault);
   } else {
     video_capturer_->Stop();
   }
@@ -87,6 +99,24 @@ void CefVideoConsumerOSR::OnFrameCaptured(
     mojo::PendingRemote<viz::mojom::FrameSinkVideoConsumerFrameCallbacks>
         callbacks) {
   ScopedVideoFrameDone scoped_done(std::move(callbacks));
+
+  // If it is GPU Texture OSR.
+  if (use_shared_texture_) {
+    DCHECK(data->is_gpu_memory_buffer_handle() &&
+           info->pixel_format == media::PIXEL_FORMAT_ARGB);
+#if BUILDFLAG(IS_WIN)
+    auto& gmb_handle = data->get_gpu_memory_buffer_handle();
+    view_->OnAcceleratedPaint(content_rect, info->coded_size,
+                              gmb_handle.dxgi_handle.Get());
+#elif BUILDFLAG(IS_APPLE)
+    // Not sure if this will compile at all :(
+    // Seeking chances to a macOS computer...
+    auto& gmb_handle = data->get_gpu_memory_buffer_handle();
+    view_->OnAcceleratedPaint(content_rect, info->coded_size,
+                              gmb_handle.io_surface.get());
+#endif
+    return;
+  }
 
   if (info->pixel_format != media::PIXEL_FORMAT_ARGB) {
     DLOG(ERROR) << "Unsupported pixel format " << info->pixel_format;

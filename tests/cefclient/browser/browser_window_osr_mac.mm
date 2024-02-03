@@ -1452,6 +1452,11 @@ void BrowserWindowOsrMacImpl::CreateBrowser(
   CefWindowInfo window_info;
   window_info.SetAsWindowless(
       CAST_NSVIEW_TO_CEF_WINDOW_HANDLE(native_browser_view_));
+      
+  window_info.shared_texture_enabled =
+        renderer_.settings().shared_texture_enabled;
+  window_info.external_begin_frame_enabled =
+        renderer_.settings().external_begin_frame_enabled;
 
   // Create the browser asynchronously.
   CefBrowserHost::CreateBrowser(window_info, browser_window_.client_handler_,
@@ -1466,6 +1471,11 @@ void BrowserWindowOsrMacImpl::GetPopupConfig(CefWindowHandle temp_handle,
   CEF_REQUIRE_UI_THREAD();
 
   windowInfo.SetAsWindowless(temp_handle);
+  windowInfo.shared_texture_enabled =
+      renderer_.settings().shared_texture_enabled;
+  windowInfo.external_begin_frame_enabled =
+      renderer_.settings().external_begin_frame_enabled;
+
   client = browser_window_.client_handler_;
 }
 

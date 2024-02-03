@@ -64,11 +64,15 @@ MainContextImpl::MainContextImpl(CefRefPtr<CefCommandLine> command_line,
       use_windowless_rendering_ &&
       command_line_->HasSwitch(switches::kTransparentPaintingEnabled);
 
-#if defined(OS_WIN)
+#if defined(OS_WIN) || defined(OS_MAC)
   // Shared texture is only supported on Windows.
   shared_texture_enabled_ =
       use_windowless_rendering_ &&
       command_line_->HasSwitch(switches::kSharedTextureEnabled);
+#else
+  // Disable for linux for now because we don't know how to deal with
+  // NativePixmap GMB.
+  shared_texture_enabled_ = false;
 #endif
 
   external_begin_frame_enabled_ =
@@ -77,7 +81,7 @@ MainContextImpl::MainContextImpl(CefRefPtr<CefCommandLine> command_line,
 
   if (windowless_frame_rate_ <= 0) {
 // Choose a reasonable default rate based on the OSR mode.
-#if defined(OS_WIN)
+#if defined(OS_WIN) || defined(OS_MAC)
     windowless_frame_rate_ = shared_texture_enabled_ ? 60 : 30;
 #else
     windowless_frame_rate_ = 30;
@@ -259,9 +263,7 @@ void MainContextImpl::PopulateOsrSettings(OsrRendererSettings* settings) {
   settings->show_update_rect =
       command_line_->HasSwitch(switches::kShowUpdateRect);
 
-#if defined(OS_WIN)
   settings->shared_texture_enabled = shared_texture_enabled_;
-#endif
   settings->external_begin_frame_enabled = external_begin_frame_enabled_;
   settings->begin_frame_rate = windowless_frame_rate_;
 
