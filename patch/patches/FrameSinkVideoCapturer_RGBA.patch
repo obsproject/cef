@@ -1,0 +1,926 @@
+diff --git components/viz/common/frame_sinks/copy_output_request.cc components/viz/common/frame_sinks/copy_output_request.cc
+--- components/viz/common/frame_sinks/copy_output_request.cc	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ components/viz/common/frame_sinks/copy_output_request.cc	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -110,12 +110,16 @@
+   DCHECK(!blit_request_);
+   DCHECK_EQ(result_destination(), ResultDestination::kNativeTextures);
+   DCHECK(result_format() == ResultFormat::NV12_PLANES ||
+-         result_format() == ResultFormat::NV12_MULTIPLANE);
++         result_format() == ResultFormat::NV12_MULTIPLANE ||
++         result_format() == ResultFormat::RGBA);
+   DCHECK(has_result_selection());
+ 
+-  // Destination region must start at an even offset for NV12 results:
+-  DCHECK_EQ(blit_request.destination_region_offset().x() % 2, 0);
+-  DCHECK_EQ(blit_request.destination_region_offset().y() % 2, 0);
++  if (result_format() == ResultFormat::NV12_PLANES ||
++      result_format() == ResultFormat::NV12_MULTIPLANE) {
++    // Destination region must start at an even offset for NV12 results:
++    DCHECK_EQ(blit_request.destination_region_offset().x() % 2, 0);
++    DCHECK_EQ(blit_request.destination_region_offset().y() % 2, 0);
++  }
+ 
+ #if DCHECK_IS_ON()
+   {
+diff --git components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc
+--- components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ components/viz/service/display_embedder/skia_output_surface_impl_on_gpu.cc	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -183,8 +183,8 @@
+     SkiaOutputSurfaceImplOnGpu* impl_on_gpu)
+     : impl_on_gpu_(impl_on_gpu) {}
+ 
+-SkiaOutputSurfaceImplOnGpu::PromiseImageAccessHelper::
+-    ~PromiseImageAccessHelper() {
++SkiaOutputSurfaceImplOnGpu::PromiseImageAccessHelper::~
++PromiseImageAccessHelper() {
+   DCHECK(image_contexts_.empty() || impl_on_gpu_->was_context_lost());
+ }
+ 
+@@ -925,11 +925,62 @@
+           is_downscale_or_identity_in_both_dimensions, std::move(request));
+       break;
+     case CopyOutputRequest::ResultDestination::kNativeTextures: {
+-      auto representation = CreateSharedImageRepresentationSkia(
+-          SinglePlaneFormat::kRGBA_8888,
+-          gfx::Size(geometry.result_bounds.width(),
+-                    geometry.result_bounds.height()),
+-          color_space, "CopyOutputInMemory");
++      std::unique_ptr<gpu::SkiaImageRepresentation> representation;
++      // If has blit request, import texture from request.
++      if (request->has_blit_request()) {
++        DCHECK(request->result_destination() ==
++               CopyOutputRequest::ResultDestination::kNativeTextures)
++            << "Only CopyOutputRequests that hand out native textures support "
++               "blit "
++               "requests!";
++        DCHECK(request->has_result_selection())
++            << "Only CopyOutputRequests that specify result selection support "
++               "blit "
++               "requests!";
++
++        if (request->result_selection().size() !=
++            geometry.result_selection.size()) {
++          DLOG(WARNING)
++              << __func__
++              << ": result selection is different than render pass output, "
++                 "geometry="
++              << geometry.ToString() << ", request=" << request->ToString();
++          // Send empty result, we have a blit request that asks for a different
++          // size than what we have available - the behavior in this case is
++          // currently unspecified as we'd have to leave parts of the caller's
++          // region unpopulated.
++          return;
++        }
++
++        const auto& blit_request = request->blit_request();
++        const gpu::MailboxHolder& mailbox_holder = blit_request.mailbox(0);
++
++        // Should never happen, mailboxes are validated when setting blit
++        // request on a CopyOutputResult.
++        DCHECK(!mailbox_holder.mailbox.IsZero());
++
++        representation = dependency_->GetSharedImageManager()->ProduceSkia(
++            mailbox_holder.mailbox, context_state_->memory_type_tracker(),
++            context_state_);
++
++        // Check if the destination will fit in the blit target:
++        const gfx::Rect blit_destination_rect(
++            request->blit_request().destination_region_offset(),
++            geometry.result_selection.size());
++        const gfx::Rect blit_target_image_rect(representation->size());
++        if (!blit_target_image_rect.Contains(blit_destination_rect)) {
++          // Send empty result, the blit target image is not large enough to fit
++          // the results.
++          DVLOG(1) << "blit target image is not large enough to fit results";
++          return;
++        }
++      } else {
++        representation = CreateSharedImageRepresentationSkia(
++            SinglePlaneFormat::kRGBA_8888,
++            gfx::Size(geometry.result_bounds.width(),
++                      geometry.result_bounds.height()),
++            color_space, "CopyOutputRGBA");
++      }
+ 
+       if (!representation) {
+         DLOG(ERROR) << "Failed to create shared image.";
+@@ -961,6 +1012,11 @@
+                     is_downscale_or_identity_in_both_dimensions,
+                     scoped_write->surface());
+ 
++      if (request->has_blit_request()) {
++        BlendBitmapOverlays(scoped_write->surface()->getCanvas(),
++                            request->blit_request());
++      }
++
+       bool should_submit_gr_context = !end_semaphores.empty();
+ 
+       if (!FlushSurface(scoped_write->surface(), end_semaphores,
+@@ -986,9 +1042,11 @@
+       gpu::Mailbox mailbox = representation->mailbox();
+ 
+       CopyOutputResult::ReleaseCallbacks release_callbacks;
+-      release_callbacks.push_back(
+-          CreateDestroyCopyOutputResourcesOnGpuThreadCallback(
+-              std::move(representation)));
++      if (!request->has_blit_request()) {
++        release_callbacks.push_back(
++            CreateDestroyCopyOutputResourcesOnGpuThreadCallback(
++                std::move(representation)));
++      }
+ 
+       request->SendResult(std::make_unique<CopyOutputTextureResult>(
+           CopyOutputResult::Format::RGBA, geometry.result_bounds,
+diff --git components/viz/service/frame_sinks/video_capture/frame_sink_video_capturer_impl.cc components/viz/service/frame_sinks/video_capture/frame_sink_video_capturer_impl.cc
+--- components/viz/service/frame_sinks/video_capture/frame_sink_video_capturer_impl.cc	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ components/viz/service/frame_sinks/video_capture/frame_sink_video_capturer_impl.cc	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -81,6 +81,7 @@
+ std::unique_ptr<VideoFramePool> GetVideoFramePoolForFormat(
+     media::VideoPixelFormat format,
+     int capacity,
++    mojom::BufferFormatPreference buffer_format_preference,
+     GmbVideoFramePoolContextProvider* context_provider) {
+   DCHECK(format == media::PIXEL_FORMAT_I420 ||
+          format == media::PIXEL_FORMAT_NV12 ||
+@@ -88,11 +89,17 @@
+ 
+   switch (format) {
+     case media::PIXEL_FORMAT_I420:
++      return std::make_unique<SharedMemoryVideoFramePool>(capacity);
+     case media::PIXEL_FORMAT_ARGB:
++      if (buffer_format_preference ==
++          mojom::BufferFormatPreference::kPreferGpuMemoryBuffer) {
++        return std::make_unique<GpuMemoryBufferVideoFramePool>(
++            capacity, format, gfx::ColorSpace::CreateSRGB(), context_provider);
++      }
+       return std::make_unique<SharedMemoryVideoFramePool>(capacity);
+     case media::PIXEL_FORMAT_NV12:
+-      return std::make_unique<GpuMemoryBufferVideoFramePool>(capacity,
+-                                                             context_provider);
++      return std::make_unique<GpuMemoryBufferVideoFramePool>(
++          capacity, format, gfx::ColorSpace::CreateREC709(), context_provider);
+     default:
+       NOTREACHED();
+       return nullptr;
+@@ -188,6 +195,7 @@
+       frame_pool_(
+           GetVideoFramePoolForFormat(pixel_format_,
+                                      kFramePoolCapacity,
++                                     buffer_format_preference_,
+                                      gmb_video_frame_pool_context_provider_)),
+       feedback_weak_factory_(oracle_.get()),
+       log_to_webrtc_(log_to_webrtc) {
+@@ -294,9 +302,9 @@
+ 
+     MarkFrame(nullptr);
+ 
+-    frame_pool_ =
+-        GetVideoFramePoolForFormat(pixel_format_, kFramePoolCapacity,
+-                                   gmb_video_frame_pool_context_provider_);
++    frame_pool_ = GetVideoFramePoolForFormat(
++        pixel_format_, kFramePoolCapacity, buffer_format_preference_,
++        gmb_video_frame_pool_context_provider_);
+ 
+     RefreshEntireSourceNow();
+   }
+@@ -404,11 +412,25 @@
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+   DCHECK(consumer);
+ 
+-  if (video_capture_started_)
++  if (video_capture_started_) {
+     Stop();
++  }
++
++  // If the buffer format preference has changed, recreate the frame pool
++  if (buffer_format_preference != buffer_format_preference_) {
++    buffer_format_preference_ = buffer_format_preference;
++
++    TRACE_EVENT_INSTANT1("gpu.capture", "Start", TRACE_EVENT_SCOPE_THREAD,
++                         "buffer_format_preference", buffer_format_preference);
++
++    MarkFrame(nullptr);
++
++    frame_pool_ = GetVideoFramePoolForFormat(
++        pixel_format_, kFramePoolCapacity, buffer_format_preference_,
++        gmb_video_frame_pool_context_provider_);
++  }
+ 
+   video_capture_started_ = true;
+-  buffer_format_preference_ = buffer_format_preference;
+ 
+   TRACE_EVENT_NESTABLE_ASYNC_BEGIN2(
+       "gpu.capture", "FrameSinkVideoCapturerImpl::Start", this, "pixel_format_",
+@@ -420,8 +442,9 @@
+         buffer_format_preference_ ==
+             mojom::BufferFormatPreference::kPreferGpuMemoryBuffer);
+ 
+-  if (resolved_target_)
++  if (resolved_target_) {
+     resolved_target_->OnClientCaptureStarted();
++  }
+ 
+   consumer_.Bind(std::move(consumer));
+   // In the future, if the connection to the consumer is lost before a call to
+@@ -432,8 +455,9 @@
+ }
+ 
+ void FrameSinkVideoCapturerImpl::Stop() {
+-  if (!video_capture_started_)
++  if (!video_capture_started_) {
+     return;
++  }
+ 
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+ 
+@@ -453,8 +477,9 @@
+     consumer_informed_of_empty_region_ = false;
+   }
+ 
+-  if (resolved_target_)
++  if (resolved_target_) {
+     resolved_target_->OnClientCaptureStopped();
++  }
+ 
+   TRACE_EVENT_NESTABLE_ASYNC_END0("gpu.capture",
+                                   "FrameSinkVideoCapturerImpl::Start", this);
+@@ -672,7 +697,7 @@
+       request_time(request_time) {}
+ 
+ FrameSinkVideoCapturerImpl::CaptureRequestProperties::
+-    CaptureRequestProperties() = default;
++CaptureRequestProperties() = default;
+ FrameSinkVideoCapturerImpl::CaptureRequestProperties::CaptureRequestProperties(
+     const FrameSinkVideoCapturerImpl::CaptureRequestProperties&) = default;
+ FrameSinkVideoCapturerImpl::CaptureRequestProperties::CaptureRequestProperties(
+@@ -683,8 +708,8 @@
+ FrameSinkVideoCapturerImpl::CaptureRequestProperties&
+ FrameSinkVideoCapturerImpl::CaptureRequestProperties::operator=(
+     FrameSinkVideoCapturerImpl::CaptureRequestProperties&&) = default;
+-FrameSinkVideoCapturerImpl::CaptureRequestProperties::
+-    ~CaptureRequestProperties() = default;
++FrameSinkVideoCapturerImpl::CaptureRequestProperties::~
++CaptureRequestProperties() = default;
+ 
+ void FrameSinkVideoCapturerImpl::MaybeCaptureFrame(
+     VideoCaptureOracle::Event event,
+@@ -916,8 +941,9 @@
+         gfx::Vector2d(content_rect.width(), content_rect.height()));
+     update_rect.Offset(content_rect.OffsetFromOrigin());
+     if (pixel_format_ == media::PIXEL_FORMAT_I420 ||
+-        pixel_format_ == media::PIXEL_FORMAT_NV12)
++        pixel_format_ == media::PIXEL_FORMAT_NV12) {
+       update_rect = ExpandRectToI420SubsampleBoundaries(update_rect);
++    }
+   }
+   metadata.capture_update_rect = update_rect;
+ 
+@@ -1014,7 +1040,13 @@
+           mojom::BufferFormatPreference::kPreferGpuMemoryBuffer &&
+       pixel_format_ == media::PIXEL_FORMAT_NV12;
+ 
++  const bool use_rgba_with_textures =
++      buffer_format_preference_ ==
++          mojom::BufferFormatPreference::kPreferGpuMemoryBuffer &&
++      pixel_format_ == media::PIXEL_FORMAT_ARGB;
++
+   absl::optional<BlitRequest> blit_request;
++  absl::optional<VideoCaptureOverlay::CapturedFrameProperties> frame_properties;
+   if (use_nv12_with_textures) {
+     TRACE_EVENT("gpu.capture", "PopulateBlitRequest");
+ 
+@@ -1042,15 +1074,35 @@
+     // the sake of blend information computation. We will be asking for an
+     // entire frame (not just dirty part - for that, we'd need to know what
+     // the diff between the frame we got and current content version is).
+-    VideoCaptureOverlay::CapturedFrameProperties frame_properties{
++    frame_properties = VideoCaptureOverlay::CapturedFrameProperties{
+         request_properties.region_properties, request_properties.content_rect,
+         media::VideoPixelFormat::PIXEL_FORMAT_NV12};
++  }
++
++  if (use_rgba_with_textures) {
++    auto first_mailbox = request_properties.frame->mailbox_holder(0);
++
++    static_assert(CopyOutputResult::kMaxPlanes == 3u);
++    std::array<gpu::MailboxHolder, CopyOutputResult::kMaxPlanes>
++        mailbox_holders{first_mailbox, gpu::MailboxHolder{},
++                        gpu::MailboxHolder{}};
++
++    blit_request =
++        BlitRequest(content_rect.origin(), LetterboxingBehavior::kLetterbox,
++                    mailbox_holders, true);
+ 
++    frame_properties = VideoCaptureOverlay::CapturedFrameProperties{
++        request_properties.region_properties, request_properties.content_rect,
++        media::VideoPixelFormat::PIXEL_FORMAT_ARGB};
++  }
++
++  if (use_rgba_with_textures || use_nv12_with_textures) {
+     for (const VideoCaptureOverlay* overlay : GetOverlaysInOrder()) {
+       absl::optional<VideoCaptureOverlay::BlendInformation> blend_information =
+-          overlay->CalculateBlendInformation(frame_properties);
+-      if (!blend_information)
++          overlay->CalculateBlendInformation(frame_properties.value());
++      if (!blend_information) {
+         continue;
++      }
+ 
+       // Blend in Skia happens from the unscaled bitmap, into the destination
+       // region expressed in content's (aka VideoFrame's) space:
+@@ -1084,7 +1136,7 @@
+   auto request = std::make_unique<CopyOutputRequest>(
+       VideoPixelFormatToCopyOutputRequestFormat(pixel_format_,
+                                                 use_multiplane_for_nv12),
+-      use_nv12_with_textures
++      use_nv12_with_textures || use_rgba_with_textures
+           ? CopyOutputRequest::ResultDestination::kNativeTextures
+           : CopyOutputRequest::ResultDestination::kSystemMemory,
+       base::BindOnce(&FrameSinkVideoCapturerImpl::DidCopyFrame,
+@@ -1231,18 +1283,33 @@
+ 
+     UMA_HISTOGRAM_CAPTURE_SUCCEEDED("I420", success);
+   } else if (pixel_format_ == media::PIXEL_FORMAT_ARGB) {
+-    int stride = frame->stride(VideoFrame::kARGBPlane);
+-    DCHECK_EQ(media::PIXEL_FORMAT_ARGB, pixel_format_);
+-    uint8_t* const pixels =
+-        frame->GetWritableVisibleData(VideoFrame::kARGBPlane) +
+-        content_rect.y() * stride + content_rect.x() * 4;
+-    bool success = result->ReadRGBAPlane(pixels, stride);
+-    if (success) {
+-      frame->set_color_space(result->GetRGBAColorSpace());
+-      UMA_HISTOGRAM_CAPTURE_DURATION(
+-          "RGBA", base::TimeTicks::Now() - properties.request_time);
+-    } else {
+-      frame = nullptr;
++    if (buffer_format_preference_ == mojom::BufferFormatPreference::kDefault) {
++      int stride = frame->stride(VideoFrame::kARGBPlane);
++      DCHECK_EQ(media::PIXEL_FORMAT_ARGB, pixel_format_);
++      uint8_t* const pixels =
++          frame->GetWritableVisibleData(VideoFrame::kARGBPlane) +
++          content_rect.y() * stride + content_rect.x() * 4;
++      bool success = result->ReadRGBAPlane(pixels, stride);
++      if (success) {
++        frame->set_color_space(result->GetRGBAColorSpace());
++        UMA_HISTOGRAM_CAPTURE_DURATION(
++            "RGBA", base::TimeTicks::Now() - properties.request_time);
++      } else {
++        frame = nullptr;
++      }
++    } else if (buffer_format_preference_ ==
++               mojom::BufferFormatPreference::kPreferGpuMemoryBuffer) {
++      // GMB RGBA Result are write back to texture.
++      if (result->IsEmpty()) {
++        frame = nullptr;
++      } else {
++        frame->set_color_space(gfx::ColorSpace::CreateSRGB());
++
++        UMA_HISTOGRAM_CAPTURE_DURATION(
++            "RGBA", base::TimeTicks::Now() - properties.request_time);
++      }
++
++      UMA_HISTOGRAM_CAPTURE_SUCCEEDED("NV12", !result->IsEmpty());
+     }
+   } else {
+     DCHECK_EQ(pixel_format_, media::PIXEL_FORMAT_NV12);
+@@ -1445,19 +1512,23 @@
+     const gfx::Size& raw_size) const {
+   if (pixel_format_ == media::PIXEL_FORMAT_ARGB) {
+     gfx::Size result(raw_size);
+-    if (result.width() <= 0)
++    if (result.width() <= 0) {
+       result.set_width(1);
+-    if (result.height() <= 0)
++    }
++    if (result.height() <= 0) {
+       result.set_height(1);
++    }
+     return result;
+   }
+   DCHECK(media::PIXEL_FORMAT_I420 == pixel_format_ ||
+          media::PIXEL_FORMAT_NV12 == pixel_format_);
+   gfx::Size result(raw_size.width() & ~1, raw_size.height() & ~1);
+-  if (result.width() <= 0)
++  if (result.width() <= 0) {
+     result.set_width(2);
+-  if (result.height() <= 0)
++  }
++  if (result.height() <= 0) {
+     result.set_height(2);
++  }
+   return result;
+ }
+ 
+diff --git components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.cc components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.cc
+--- components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.cc	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.cc	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -12,8 +12,13 @@
+ 
+ GpuMemoryBufferVideoFramePool::GpuMemoryBufferVideoFramePool(
+     int capacity,
++    media::VideoPixelFormat format,
++    const gfx::ColorSpace& color_space,
+     GmbVideoFramePoolContextProvider* context_provider)
+-    : VideoFramePool(capacity), context_provider_(context_provider) {
++    : VideoFramePool(capacity, format),
++      format_(format),
++      color_space_(color_space),
++      context_provider_(context_provider) {
+   RecreateVideoFramePool();
+ }
+ 
+@@ -25,7 +30,8 @@
+ GpuMemoryBufferVideoFramePool::ReserveVideoFrame(media::VideoPixelFormat format,
+                                                  const gfx::Size& size) {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+-  DCHECK_EQ(format, media::VideoPixelFormat::PIXEL_FORMAT_NV12);
++  DCHECK_EQ(format, format_) << "Reserving a format that is different from the "
++                                "one specified in the constructor.";
+   DCHECK_LE(num_reserved_frames_, capacity());
+ 
+   if (num_reserved_frames_ == capacity()) {
+@@ -33,8 +39,7 @@
+   }
+ 
+   scoped_refptr<media::VideoFrame> result =
+-      video_frame_pool_->MaybeCreateVideoFrame(size,
+-                                               gfx::ColorSpace::CreateREC709());
++      video_frame_pool_->MaybeCreateVideoFrame(size, color_space_);
+ 
+   if (result) {
+     num_reserved_frames_++;
+@@ -71,7 +76,7 @@
+       base::BindOnce(&GpuMemoryBufferVideoFramePool::RecreateVideoFramePool,
+                      weak_factory_.GetWeakPtr()));
+   video_frame_pool_ = media::RenderableGpuMemoryBufferVideoFramePool::Create(
+-      std::move(pool_context));
++      std::move(pool_context), format_);
+ 
+   video_frame_pool_generation_++;
+   num_reserved_frames_ = 0;
+diff --git components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.h components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.h
+--- components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.h	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ components/viz/service/frame_sinks/video_capture/gpu_memory_buffer_video_frame_pool.h	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -22,6 +22,8 @@
+   // The |context_provider| must outlive this instance.
+   explicit GpuMemoryBufferVideoFramePool(
+       int capacity,
++      media::VideoPixelFormat format,
++      const gfx::ColorSpace& color_space,
+       GmbVideoFramePoolContextProvider* context_provider);
+   ~GpuMemoryBufferVideoFramePool() override;
+ 
+@@ -48,6 +50,10 @@
+   // number of reserved frames will be decremented.
+   void OnVideoFrameDestroyed(uint32_t frame_pool_generation);
+ 
++  // Support multiple format & color space
++  const media::VideoPixelFormat format_;
++  const gfx::ColorSpace color_space_;
++
+   raw_ptr<GmbVideoFramePoolContextProvider> context_provider_
+       GUARDED_BY_CONTEXT(sequence_checker_);
+ 
+diff --git components/viz/service/frame_sinks/video_capture/video_frame_pool.cc components/viz/service/frame_sinks/video_capture/video_frame_pool.cc
+--- components/viz/service/frame_sinks/video_capture/video_frame_pool.cc	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ components/viz/service/frame_sinks/video_capture/video_frame_pool.cc	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -14,6 +14,11 @@
+   DCHECK_GT(capacity_, 0u);
+ }
+ 
++VideoFramePool::VideoFramePool(int capacity, media::VideoPixelFormat format)
++    : capacity_(std::max(0, capacity)), format_(format) {
++  DCHECK_GT(capacity_, 0u);
++}
++
+ VideoFramePool::~VideoFramePool() = default;
+ 
+ float VideoFramePool::GetUtilization() const {
+diff --git components/viz/service/frame_sinks/video_capture/video_frame_pool.h components/viz/service/frame_sinks/video_capture/video_frame_pool.h
+--- components/viz/service/frame_sinks/video_capture/video_frame_pool.h	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ components/viz/service/frame_sinks/video_capture/video_frame_pool.h	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -60,10 +60,18 @@
+   // any byte size.
+   explicit VideoFramePool(int capacity);
+ 
++  // If buffer is a GMB pool, |format| is the only format supported by the pool.
++  explicit VideoFramePool(int capacity, media::VideoPixelFormat format);
++
+  private:
+   // The maximum number of buffers. However, the buffers themselves can be of
+   // any byte size.
+   const size_t capacity_;
++
++  // The video frame buffer supports multiple formats
++  // If set, the pool is limited to this format, otherwise it supports multiple
++  // formats (format unawareness).
++  const absl::optional<media::VideoPixelFormat> format_;
+ };
+ 
+ }  // namespace viz
+diff --git gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc
+--- gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ gpu/ipc/service/gpu_memory_buffer_factory_dxgi.cc	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -148,8 +148,9 @@
+   gfx::GpuMemoryBufferHandle handle;
+ 
+   auto d3d11_device = GetOrCreateD3D11Device();
+-  if (!d3d11_device)
++  if (!d3d11_device) {
+     return handle;
++  }
+ 
+   DXGI_FORMAT dxgi_format;
+   switch (format) {
+@@ -157,6 +158,9 @@
+     case gfx::BufferFormat::RGBX_8888:
+       dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+       break;
++    case gfx::BufferFormat::BGRA_8888:
++      dxgi_format = DXGI_FORMAT_B8G8R8A8_UNORM;
++      break;
+     case gfx::BufferFormat::YUV_420_BIPLANAR:
+       dxgi_format = DXGI_FORMAT_NV12;
+       break;
+@@ -167,8 +171,9 @@
+   }
+ 
+   size_t buffer_size;
+-  if (!BufferSizeForBufferFormatChecked(size, format, &buffer_size))
++  if (!BufferSizeForBufferFormatChecked(size, format, &buffer_size)) {
+     return handle;
++  }
+ 
+   // We are binding as a shader resource and render target regardless of usage,
+   // so make sure that the usage is one that we support.
+@@ -192,18 +197,21 @@
+ 
+   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture;
+ 
+-  if (FAILED(d3d11_device->CreateTexture2D(&desc, nullptr, &d3d11_texture)))
++  if (FAILED(d3d11_device->CreateTexture2D(&desc, nullptr, &d3d11_texture))) {
+     return handle;
++  }
+ 
+   Microsoft::WRL::ComPtr<IDXGIResource1> dxgi_resource;
+-  if (FAILED(d3d11_texture.As(&dxgi_resource)))
++  if (FAILED(d3d11_texture.As(&dxgi_resource))) {
+     return handle;
++  }
+ 
+   HANDLE texture_handle;
+   if (FAILED(dxgi_resource->CreateSharedHandle(
+           nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+-          nullptr, &texture_handle)))
++          nullptr, &texture_handle))) {
+     return handle;
++  }
+ 
+   handle.dxgi_handle.Set(texture_handle);
+   handle.dxgi_token = gfx::DXGIHandleToken();
+@@ -223,12 +231,14 @@
+   DCHECK_EQ(buffer_handle.type, gfx::GpuMemoryBufferType::DXGI_SHARED_HANDLE);
+ 
+   auto d3d11_device = GetOrCreateD3D11Device();
+-  if (!d3d11_device)
++  if (!d3d11_device) {
+     return false;
++  }
+ 
+   base::WritableSharedMemoryMapping mapping = shared_memory.Map();
+-  if (!mapping.IsValid())
++  if (!mapping.IsValid()) {
+     return false;
++  }
+ 
+   return CopyDXGIBufferToShMem(buffer_handle.dxgi_handle.Get(),
+                                mapping.GetMemoryAsSpan<uint8_t>(),
+diff --git media/video/renderable_gpu_memory_buffer_video_frame_pool.cc media/video/renderable_gpu_memory_buffer_video_frame_pool.cc
+--- media/video/renderable_gpu_memory_buffer_video_frame_pool.cc	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ media/video/renderable_gpu_memory_buffer_video_frame_pool.cc	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -37,6 +37,7 @@
+ class FrameResources {
+  public:
+   FrameResources(scoped_refptr<InternalRefCountedPool> pool,
++                 VideoPixelFormat format,
+                  const gfx::Size& coded_size,
+                  const gfx::ColorSpace& color_space);
+   ~FrameResources();
+@@ -67,6 +68,7 @@
+   // SharedImages) will not be destroyed until after `this` is destroyed.
+   const scoped_refptr<InternalRefCountedPool> pool_;
+ 
++  const VideoPixelFormat format_;
+   const gfx::Size coded_size_;
+   const gfx::ColorSpace color_space_;
+   std::unique_ptr<gfx::GpuMemoryBuffer> gpu_memory_buffer_;
+@@ -86,8 +88,8 @@
+     : public base::RefCountedThreadSafe<InternalRefCountedPool> {
+  public:
+   explicit InternalRefCountedPool(
+-      std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context>
+-          context);
++      std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context> context,
++      VideoPixelFormat format);
+ 
+   // Create a VideoFrame with the specified parameters, reusing the resources
+   // of a previous frame, if possible.
+@@ -117,6 +119,7 @@
+       const gpu::SyncToken& sync_token,
+       std::unique_ptr<gfx::GpuMemoryBuffer> gpu_memory_buffer);
+ 
++  const VideoPixelFormat format_;
+   const std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context>
+       context_;
+   std::list<std::unique_ptr<FrameResources>> available_frame_resources_;
+@@ -129,8 +132,8 @@
+     : public RenderableGpuMemoryBufferVideoFramePool {
+  public:
+   explicit RenderableGpuMemoryBufferVideoFramePoolImpl(
+-      std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context>
+-          context);
++      std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context> context,
++      VideoPixelFormat format);
+ 
+   scoped_refptr<VideoFrame> MaybeCreateVideoFrame(
+       const gfx::Size& coded_size,
+@@ -138,6 +141,7 @@
+ 
+   ~RenderableGpuMemoryBufferVideoFramePoolImpl() override;
+ 
++  const VideoPixelFormat format_;
+   const scoped_refptr<InternalRefCountedPool> pool_internal_;
+ };
+ 
+@@ -145,11 +149,16 @@
+ // FrameResources
+ 
+ FrameResources::FrameResources(scoped_refptr<InternalRefCountedPool> pool,
++                               const VideoPixelFormat format,
+                                const gfx::Size& coded_size,
+                                const gfx::ColorSpace& color_space)
+     : pool_(std::move(pool)),
++      format_(format),
+       coded_size_(coded_size),
+-      color_space_(color_space) {}
++      color_space_(color_space) {
++  // Currently only support ARGB and NV12.
++  DCHECK(format == PIXEL_FORMAT_ARGB || format == PIXEL_FORMAT_NV12);
++}
+ 
+ FrameResources::~FrameResources() {
+   auto* context = pool_->GetContext();
+@@ -162,6 +171,33 @@
+   }
+ }
+ 
++gfx::BufferFormat GetBufferFormatForVideoPixelFormat(VideoPixelFormat format) {
++  switch (format) {
++    case PIXEL_FORMAT_ARGB:
++      return gfx::BufferFormat::BGRA_8888;
++    case PIXEL_FORMAT_NV12:
++      return gfx::BufferFormat::YUV_420_BIPLANAR;
++    default:
++      NOTREACHED();
++      return gfx::BufferFormat::YUV_420_BIPLANAR;
++  }
++}
++
++gfx::Size GetBufferSizeInPixelsForVideoPixelFormat(
++    VideoPixelFormat format,
++    const gfx::Size& coded_size) {
++  switch (format) {
++    case PIXEL_FORMAT_ARGB:
++      return coded_size;
++    case PIXEL_FORMAT_NV12:
++      return {base::bits::AlignUpDeprecatedDoNotUse(coded_size.width(), 4),
++              base::bits::AlignUpDeprecatedDoNotUse(coded_size.height(), 2)};
++    default:
++      NOTREACHED();
++      return coded_size;
++  }
++}
++
+ bool FrameResources::Initialize() {
+   auto* context = pool_->GetContext();
+ 
+@@ -172,17 +208,16 @@
+       gfx::BufferUsage::SCANOUT_CPU_READ_WRITE
+ #endif
+       ;
+-  constexpr gfx::BufferFormat kBufferFormat =
+-      gfx::BufferFormat::YUV_420_BIPLANAR;
++  const gfx::BufferFormat kBufferFormat =
++      GetBufferFormatForVideoPixelFormat(format_);
+ 
+   // Align number of rows to 2, because it's required by YUV_420_BIPLANAR
+   // buffer allocation code.
+   // Align buffer stride to 4, because our SharedImage shared memory backing
+   // code requires it, since it sometimes treats Y-planes are 4 bytes per pixel
+   // textures.
+-  gfx::Size buffer_size_in_pixels(
+-      base::bits::AlignUpDeprecatedDoNotUse(coded_size_.width(), 4),
+-      base::bits::AlignUpDeprecatedDoNotUse(coded_size_.height(), 2));
++  gfx::Size buffer_size_in_pixels =
++      GetBufferSizeInPixelsForVideoPixelFormat(format_, coded_size_);
+ 
+   // Create the GpuMemoryBuffer.
+   gpu_memory_buffer_ = context->CreateGpuMemoryBuffer(
+@@ -219,34 +254,52 @@
+   texture_target = gpu::GetPlatformSpecificTextureTarget();
+ #endif
+ 
+-  if (IsMultiPlaneFormatForHardwareVideoEnabled()) {
+-    shared_images_[0] = context->CreateSharedImage(
+-        gpu_memory_buffer_.get(), viz::MultiPlaneFormat::kNV12, color_space_,
+-        kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, kSharedImageUsage,
+-        mailbox_holders_[0].sync_token);
+-    if (shared_images_[0]) {
+-      mailbox_holders_[0].mailbox = shared_images_[0]->mailbox();
+-    }
+-    mailbox_holders_[0].texture_target = texture_target;
+-    return true;
+-  }
++  switch (format_) {
++    case PIXEL_FORMAT_NV12: {
++      if (IsMultiPlaneFormatForHardwareVideoEnabled()) {
++        shared_images_[0] = context->CreateSharedImage(
++            gpu_memory_buffer_.get(), viz::MultiPlaneFormat::kNV12,
++            color_space_, kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
++            kSharedImageUsage, mailbox_holders_[0].sync_token);
++        if (shared_images_[0]) {
++          mailbox_holders_[0].mailbox = shared_images_[0]->mailbox();
++        }
++        mailbox_holders_[0].texture_target = texture_target;
++        return true;
++      }
+ 
+-  // Bind SharedImages to each plane.
+-  constexpr size_t kNumPlanes = 2;
+-  constexpr gfx::BufferPlane kPlanes[kNumPlanes] = {gfx::BufferPlane::Y,
+-                                                    gfx::BufferPlane::UV};
++      // Bind SharedImages to each plane.
++      constexpr size_t kNumPlanes = 2;
++      constexpr gfx::BufferPlane kPlanes[kNumPlanes] = {gfx::BufferPlane::Y,
++                                                        gfx::BufferPlane::UV};
+ 
+-  for (size_t plane = 0; plane < kNumPlanes; ++plane) {
+-    shared_images_[plane] = context->CreateSharedImage(
+-        gpu_memory_buffer_.get(), kPlanes[plane], color_space_,
+-        kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, kSharedImageUsage,
+-        mailbox_holders_[plane].sync_token);
+-    if (shared_images_[plane]) {
+-      mailbox_holders_[plane].mailbox = shared_images_[plane]->mailbox();
+-    }
+-    mailbox_holders_[plane].texture_target = texture_target;
+-  }
+-  return true;
++      for (size_t plane = 0; plane < kNumPlanes; ++plane) {
++        shared_images_[plane] = context->CreateSharedImage(
++            gpu_memory_buffer_.get(), kPlanes[plane], color_space_,
++            kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, kSharedImageUsage,
++            mailbox_holders_[plane].sync_token);
++        if (shared_images_[plane]) {
++          mailbox_holders_[plane].mailbox = shared_images_[plane]->mailbox();
++        }
++        mailbox_holders_[plane].texture_target = texture_target;
++      }
++      return true;
++    }
++    case PIXEL_FORMAT_ARGB: {
++      shared_images_[0] = context->CreateSharedImage(
++          gpu_memory_buffer_.get(), viz::SinglePlaneFormat::kBGRA_8888,
++          color_space_, kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
++          kSharedImageUsage, mailbox_holders_[0].sync_token);
++      if (shared_images_[0]) {
++        mailbox_holders_[0].mailbox = shared_images_[0]->mailbox();
++        mailbox_holders_[0].texture_target = texture_target;
++      }
++      return true;
++    }
++    default:
++      NOTREACHED();
++      return false;
++  }
+ }
+ 
+ bool FrameResources::IsCompatibleWith(
+@@ -263,8 +316,9 @@
+       visible_rect, natural_size, std::move(gpu_memory_buffer_),
+       mailbox_holders_, VideoFrame::ReleaseMailboxAndGpuMemoryBufferCB(),
+       base::TimeDelta());
+-  if (!video_frame)
++  if (!video_frame) {
+     return nullptr;
++  }
+ 
+   video_frame->set_color_space(color_space_);
+ 
+@@ -295,16 +349,18 @@
+     const gpu::SyncToken& sync_token) {
+   DCHECK(!gpu_memory_buffer_);
+   gpu_memory_buffer_ = std::move(gpu_memory_buffer);
+-  for (auto& holder : mailbox_holders_)
++  for (auto& holder : mailbox_holders_) {
+     holder.sync_token = sync_token;
++  }
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////////////
+ // InternalRefCountedPool
+ 
+ InternalRefCountedPool::InternalRefCountedPool(
+-    std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context> context)
+-    : context_(std::move(context)) {}
++    std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context> context,
++    const VideoPixelFormat format)
++    : format_(format), context_(std::move(context)) {}
+ 
+ scoped_refptr<VideoFrame> InternalRefCountedPool::MaybeCreateVideoFrame(
+     const gfx::Size& coded_size,
+@@ -320,8 +376,8 @@
+     }
+   }
+   if (!frame_resources) {
+-    frame_resources =
+-        std::make_unique<FrameResources>(this, coded_size, color_space);
++    frame_resources = std::make_unique<FrameResources>(this, format_,
++                                                       coded_size, color_space);
+     if (!frame_resources->Initialize()) {
+       DLOG(ERROR) << "Failed to initialize frame resources.";
+       return nullptr;
+@@ -353,15 +409,17 @@
+   frame_resources->ReturnGpuMemoryBufferFromFrame(std::move(gpu_memory_buffer),
+                                                   sync_token);
+ 
+-  if (shutting_down_)
++  if (shutting_down_) {
+     return;
++  }
+ 
+   // TODO(https://crbug.com/1191956): Determine if we can get away with just
+   // having 1 available frame, or if that will cause flakey underruns.
+   constexpr size_t kMaxAvailableFrames = 2;
+   available_frame_resources_.push_back(std::move(frame_resources));
+-  while (available_frame_resources_.size() > kMaxAvailableFrames)
++  while (available_frame_resources_.size() > kMaxAvailableFrames) {
+     available_frame_resources_.pop_front();
++  }
+ }
+ 
+ void InternalRefCountedPool::Shutdown() {
+@@ -383,11 +441,12 @@
+ // RenderableGpuMemoryBufferVideoFramePoolImpl
+ 
+ RenderableGpuMemoryBufferVideoFramePoolImpl::
+-    RenderableGpuMemoryBufferVideoFramePoolImpl(
+-        std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context>
+-            context)
+-    : pool_internal_(
+-          base::MakeRefCounted<InternalRefCountedPool>(std::move(context))) {}
++RenderableGpuMemoryBufferVideoFramePoolImpl(
++    std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool::Context> context,
++    const VideoPixelFormat format)
++    : format_(format),
++      pool_internal_(
++          base::MakeRefCounted<InternalRefCountedPool>(std::move(context), format)) {}
+ 
+ scoped_refptr<VideoFrame>
+ RenderableGpuMemoryBufferVideoFramePoolImpl::MaybeCreateVideoFrame(
+@@ -396,8 +455,8 @@
+   return pool_internal_->MaybeCreateVideoFrame(coded_size, color_space);
+ }
+ 
+-RenderableGpuMemoryBufferVideoFramePoolImpl::
+-    ~RenderableGpuMemoryBufferVideoFramePoolImpl() {
++RenderableGpuMemoryBufferVideoFramePoolImpl::~
++RenderableGpuMemoryBufferVideoFramePoolImpl() {
+   pool_internal_->Shutdown();
+ }
+ 
+@@ -409,9 +468,10 @@
+ // static
+ std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool>
+ RenderableGpuMemoryBufferVideoFramePool::Create(
+-    std::unique_ptr<Context> context) {
++    std::unique_ptr<Context> context,
++    VideoPixelFormat format) {
+   return std::make_unique<RenderableGpuMemoryBufferVideoFramePoolImpl>(
+-      std::move(context));
++      std::move(context), format);
+ }
+ 
+ }  // namespace media
+diff --git media/video/renderable_gpu_memory_buffer_video_frame_pool.h media/video/renderable_gpu_memory_buffer_video_frame_pool.h
+--- media/video/renderable_gpu_memory_buffer_video_frame_pool.h	(revision bfdedd3511c94b9acff5d1f0f8ef43f3c1ffb287)
++++ media/video/renderable_gpu_memory_buffer_video_frame_pool.h	(revision c54d49a71da3c6fcae0f9efe41945d40a21fa8e0)
+@@ -86,7 +86,8 @@
+   // created by the pool have been destroyed (so it may outlive the returned
+   // pool).
+   static std::unique_ptr<RenderableGpuMemoryBufferVideoFramePool> Create(
+-      std::unique_ptr<Context> context);
++      std::unique_ptr<Context> context,
++      VideoPixelFormat format = PIXEL_FORMAT_NV12);
+ 
+   // Returns a GpuMemoryBuffer-backed VideoFrame that can be rendered to. This
+   // may return nullptr on an unsupported parameter, or may return nullptr
