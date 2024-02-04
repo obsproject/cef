@@ -1,0 +1,83 @@
+From 4a85d9aeb86d5992a6d431237bf518cd70a163f4 Mon Sep 17 00:00:00 2001
+From: Reito <carolwolfking@gmail.com>
+Date: Sun, 04 Feb 2024 23:33:31 +0800
+Subject: [PATCH] fix: SkiaOutputDeviceOffscreen use GL_TEXTURE_RECTANGLE_ARB when SkiaOutputSurface use it
+
+
+Currently SkiaOutputSurface will create a characteristic that backend_format will be kRectangle
+if the build is for macOS. But when the output_device is SkiaOutputDeviceOffscreen, the surface
+check will fail at GrSurfaceProxy::validateSurface saying:
+surface->asTexture()->textureType() != this->textureType()
+
+This fix make SkiaOutputDeviceOffscreen use same backend_format when creating Backbuffers.
+
+Change-Id: I959c96cb61d85c2358c47dc70d90ea1396f60d93
+---
+
+diff --git .gitmodules .gitmodules
+index 2a29106..dce6843 100644
+--- .gitmodules
++++ .gitmodules
+@@ -607,8 +607,8 @@
+ 	path = chrome/browser/resources/chromeos/quickoffice
+ 	url = https://chrome-internal.googlesource.com/quickoffice/crx
+ 	gclient-condition = (checkout_chromeos or checkout_linux) and checkout_src_internal
+-[submodule "chrome/browser/resources/settings_internal"]
+-	path = chrome/browser/resources/settings_internal
++[submodule "chrome/browser/resources/settings/internal"]
++	path = chrome/browser/resources/settings/internal
+ 	url = https://chrome-internal.googlesource.com/chrome/browser/resources/settings_internal
+ 	gclient-condition = checkout_src_internal
+ [submodule "chrome/browser/spellchecker/internal"]
+diff --git components/viz/service/display_embedder/skia_output_device_offscreen.cc components/viz/service/display_embedder/skia_output_device_offscreen.cc
+index f799675..cf4f80f 100644
+--- components/viz/service/display_embedder/skia_output_device_offscreen.cc
++++ components/viz/service/display_embedder/skia_output_device_offscreen.cc
+@@ -7,11 +7,13 @@
+ #include <utility>
+ 
+ #include "components/viz/common/resources/shared_image_format_utils.h"
++#include "gpu/command_buffer/common/gpu_memory_buffer_support.h"
+ #include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
+ #include "gpu/command_buffer/service/skia_utils.h"
+ #include "third_party/skia/include/core/SkSurface.h"
+ #include "third_party/skia/include/gpu/GpuTypes.h"
+ #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
++#include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
+ #include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
+ #include "third_party/skia/include/gpu/graphite/Context.h"
+ #include "third_party/skia/include/gpu/graphite/Surface.h"
+@@ -87,17 +89,31 @@
+     return;
+   }
+ 
++  auto backend_format = context_state_->gr_context()->defaultBackendFormat(
++      sk_color_type_, GrRenderable::kYes);
++#if BUILDFLAG(IS_MAC)
++  DCHECK_EQ(context_state_->gr_context_type(), gpu::GrContextType::kGL);
++  // Because SkiaOutputSurface may use IOSurface, we also need using
++  // GL_TEXTURE_RECTANGLE_ARB here, otherwise the validateSurface
++  // will fail because of the textureType mismatch
++  backend_format =
++      GrBackendFormats::MakeGL(GrBackendFormats::AsGLFormatEnum(backend_format),
++                               gpu::GetPlatformSpecificTextureTarget());
++#endif
++  DCHECK(backend_format.isValid())
++      << "GrBackendFormat is invalid for color_type: " << sk_color_type_;
++
+   CHECK(!backbuffer_estimated_size_);
+   if (gr_context_) {
+     if (has_alpha_) {
+       backend_texture_ = context_state_->gr_context()->createBackendTexture(
+-          size_.width(), size_.height(), sk_color_type_, skgpu::Mipmapped::kNo,
++          size_.width(), size_.height(), backend_format, skgpu::Mipmapped::kNo,
+           GrRenderable::kYes);
+     } else {
+       is_emulated_rgbx_ = true;
+       // Initialize alpha channel to opaque.
+       backend_texture_ = context_state_->gr_context()->createBackendTexture(
+-          size_.width(), size_.height(), sk_color_type_, SkColors::kBlack,
++          size_.width(), size_.height(), backend_format, SkColors::kBlack,
+           skgpu::Mipmapped::kNo, GrRenderable::kYes);
+     }
+     DCHECK(backend_texture_.isValid());
