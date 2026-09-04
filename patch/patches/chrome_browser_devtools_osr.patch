@@ -1,5 +1,27 @@
+diff --git chrome/browser/devtools/BUILD.gn chrome/browser/devtools/BUILD.gn
+index 802955898f7d6153e7021a2857ddc457e833a75e..4db2cf09aa5ba8cfe3a0e776e5ab66bfb12d55f7 100644
+--- chrome/browser/devtools/BUILD.gn
++++ chrome/browser/devtools/BUILD.gn
+@@ -2,6 +2,7 @@
+ # Use of this source code is governed by a BSD-style license that can be
+ # found in the LICENSE file.
+ 
++import("//cef/libcef/features/features.gni")
+ import("//content/browser/devtools/features.gni")
+ import("//extensions/buildflags/buildflags.gni")
+ import("//printing/buildflags/buildflags.gni")
+@@ -363,6 +364,9 @@ static_library("devtools") {
+       "serialize_host_descriptions.cc",
+       "serialize_host_descriptions.h",
+     ]
++    if (enable_cef) {
++      deps += [ "//cef:cef_resources" ]
++    }
+     if (enable_service_discovery) {
+       sources += [
+         "device/cast_device_provider.cc",
 diff --git chrome/browser/devtools/chrome_devtools_manager_delegate.cc chrome/browser/devtools/chrome_devtools_manager_delegate.cc
-index c9f49cd198cd29a4f4ad3c2321c9b7a874b5e899..e36ba2fd74b2f4ae12265a9ba32d62005eec760b 100644
+index c9f49cd198cd29a4f4ad3c2321c9b7a874b5e899..4a2eaf92ed6fc8bc0bd98018e286c73a763551c8 100644
 --- chrome/browser/devtools/chrome_devtools_manager_delegate.cc
 +++ chrome/browser/devtools/chrome_devtools_manager_delegate.cc
 @@ -14,6 +14,7 @@
@@ -10,27 +32,277 @@ index c9f49cd198cd29a4f4ad3c2321c9b7a874b5e899..e36ba2fd74b2f4ae12265a9ba32d6200
  #include "chrome/browser/devtools/chrome_devtools_session.h"
  #include "chrome/browser/devtools/device/android_device_manager.h"
  #include "chrome/browser/devtools/device/tcp_device_provider.h"
-@@ -74,6 +75,10 @@
- static_assert(!BUILDFLAG(IS_ANDROID),
-               "This file should not be included in Android build");
+@@ -71,6 +72,13 @@
+ #include "chromeos/constants/chromeos_features.h"
+ #endif
  
 +#if BUILDFLAG(ENABLE_CEF)
 +#include "cef/libcef/browser/chrome/extensions/chrome_extension_util.h"
++#include "cef/grit/cef_resources.h"
++#include "ui/base/resource/resource_bundle.h"
++#include "base/logging.h"
 +#endif
 +
- using content::DevToolsAgentHost;
+ static_assert(!BUILDFLAG(IS_ANDROID),
+               "This file should not be included in Android build");
  
- const char ChromeDevToolsManagerDelegate::kTypeApp[] = "app";
-@@ -323,6 +328,12 @@ std::string ChromeDevToolsManagerDelegate::GetTargetType(
+@@ -322,6 +330,11 @@ std::string ChromeDevToolsManagerDelegate::GetTargetType(
+   if (views::WebView::IsWebViewContents(web_contents)) {
      return DevToolsAgentHost::kTypePage;
    }
- 
 +#if BUILDFLAG(ENABLE_CEF)
 +  if (cef::IsAlloyContents(web_contents, /*primary_only=*/true)) {
 +    return DevToolsAgentHost::kTypePage;
 +  }
 +#endif
-+
+ 
    return DevToolsAgentHost::kTypeOther;
  }
+@@ -472,6 +485,16 @@ bool ChromeDevToolsManagerDelegate::HasBundledFrontendResources() {
+   return true;
+ }
  
++std::string ChromeDevToolsManagerDelegate::GetDiscoveryPageHTML() {
++#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || !BUILDFLAG(ENABLE_CEF)
++  return std::string();
++#else
++  LOG(ERROR) << "CHROME ChromeDevToolsManagerDelegate::GetDiscoveryPageHTML";
++  return ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
++      IDR_CONTENT_SHELL_DEVTOOLS_DISCOVERY_PAGE);
++#endif
++}
++
+ void ChromeDevToolsManagerDelegate::DevicesAvailable(
+     const DevToolsDeviceDiscovery::CompleteDevices& devices) {
+   DevToolsAgentHost::List remote_targets;
+diff --git chrome/browser/devtools/chrome_devtools_manager_delegate.h chrome/browser/devtools/chrome_devtools_manager_delegate.h
+index a48b3a9ebdf6f323a636dafbaf99532a2f375ce4..ec80d5ace22dc020be8e001e37d55de2381b2195 100644
+--- chrome/browser/devtools/chrome_devtools_manager_delegate.h
++++ chrome/browser/devtools/chrome_devtools_manager_delegate.h
+@@ -102,6 +102,8 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate,
+   void DevicesAvailable(
+       const DevToolsDeviceDiscovery::CompleteDevices& devices);
+ 
++  std::string GetDiscoveryPageHTML() override;
++
+   // ConfirmInfoBarDelegate::Observer
+   void OnAccept() override;
+   void OnDismiss() override;
+diff --git content/shell/resources/shell_devtools_discovery_page.html content/shell/resources/shell_devtools_discovery_page.html
+index 9aa4c300941726bff1bb70d7701e52b04e373c4e..660e6fdca8f11606a7607b7683a970517ec24d25 100644
+--- content/shell/resources/shell_devtools_discovery_page.html
++++ content/shell/resources/shell_devtools_discovery_page.html
+@@ -1,54 +1,162 @@
+ <html>
++
+ <head>
+-<title>Content shell remote debugging</title>
+-<style>
+-</style>
+-
+-<script>
+-function onLoad() {
+-  var tabs_list_request = new XMLHttpRequest();
+-  tabs_list_request.open("GET", "/json/list?t=" + new Date().getTime(), true);
+-  tabs_list_request.onreadystatechange = onReady;
+-  tabs_list_request.send();
+-}
+-
+-function onReady() {
+-  if(this.readyState == 4 && this.status == 200) {
+-    if(this.response != null)
+-      var responseJSON = JSON.parse(this.response);
+-      for (var i = 0; i < responseJSON.length; ++i)
+-        appendItem(responseJSON[i]);
+-  }
+-}
+-
+-function appendItem(item_object) {
+-  var frontend_ref;
+-  if (item_object.devtoolsFrontendUrl) {
+-    frontend_ref = document.createElement("a");
+-    frontend_ref.href = item_object.devtoolsFrontendUrl;
+-    frontend_ref.title = item_object.title;
+-  } else {
+-    frontend_ref = document.createElement("div");
+-    frontend_ref.title = "The tab already has active debugging session";
+-  }
+-
+-  var text = document.createElement("div");
+-  if (item_object.title)
+-    text.innerText = item_object.title;
+-  else
+-    text.innerText = "(untitled tab)";
+-  text.style.cssText = "background-image:url(" + item_object.faviconUrl + ")";
+-  frontend_ref.appendChild(text);
+-
+-  var item = document.createElement("p");
+-  item.appendChild(frontend_ref);
+-
+-  document.getElementById("items").appendChild(item);
+-}
+-</script>
++	<!-- Custom variant of dev_tools_discovery.html used internally by CEF -->
++	<title>OBS Browser Remote Debugging</title>
++	<style>
++		html {
++			font-family: Arial, Helvetica, sans-serif;
++		}
++
++		button#refresh {
++			vertical-align: text-bottom;
++		}
++
++		#items > li > button {
++			background: none;
++			border: none;
++			cursor: pointer;
++			padding-top: 0;
++			padding-bottom: 0;
++		}
++		
++		.favicon {
++			width: 16px;
++			height: 16px;
++			position: relative;
++			display: inline-block;
++			bottom: -2px;
++			margin-right: 3px;
++		}
++
++		a {
++			color: #585858;
++		}
++
++		a:visited {
++			color: #7e7070;
++		}
++
++		a:hover {
++			color: #000;
++			text-decoration: none;
++		}
++
++		.hidden {
++			display: none;
++		}
++	</style>
++
++	<script>
++		let children = {};
++		function onLoad() {
++			const list = document.getElementById('items');
++			while (list.firstChild) {
++				list.removeChild(list.firstChild);
++			}
++			const t = new Date().getTime();
++			fetch(`/json/list?t=${t}`)
++				.then(resp => resp.json())
++				.then(onFetch)
++				.catch(() => {
++					list.innerText = 'Failed to fetch list. Did OBS close?';
++				});
++			fetch(`/json/version?t=${t}`)
++				.then(resp => resp.json())
++				.then(onVersion);
++		}
++
++		function onFetch(resp) {
++			resp.sort((a, b) => {
++				const p = 'page';
++				if (a.type === p && b.type !== p)
++					return -1;
++				if (a.type !== p && b.type === p)
++					return 1;
++				return 0;
++			});
++			for (const el of resp) {
++				children[el.id] = [];
++			}
++			for (const el of resp) {
++				if (el.parentId) children[el.parentId].push(el);
++			}
++			generateList(resp);
++		}
++
++		function onVersion(resp) {
++			const v = document.getElementById('version');
++			const uA = resp['User-Agent'].split(' ');
++			const rV = uA.filter(r => r.startsWith('OBS/'));
++			v.innerText = rV[0].replace('/', ' ');
++		}
++
++		function generateList(resp) {
++			for (const el of resp) {
++				appendItem(el);
++			}
++		}
++
++		function makeLink(childItem, title) {
++			const { faviconUrl, devtoolsFrontendUrl, url, webSocketDebuggerUrl } = childItem;
++			let linkEl;
++			const listItem = document.createElement('li');
++			if (devtoolsFrontendUrl) {
++				linkEl = document.createElement('a');
++				linkEl.title = url;
++				linkEl.href = devtoolsFrontendUrl;
++				if (webSocketDebuggerUrl) {
++					linkEl.href = `/devtools/inspector.html?${webSocketDebuggerUrl.replace('://', '=')}`;
++				}
++			} else {
++				linkEl = document.createElement('span');
++				linkEl.title = 'Already debugging';
++			}
++			const text = document.createElement('span');
++			text.innerText = title || '(untitled tab)';
++
++			if (faviconUrl && childItem.type == 'page') {
++				const icon = document.createElement('img');
++				icon.src = faviconUrl;
++				icon.className = 'favicon';
++				listItem.appendChild(icon);
++			}
++			linkEl.appendChild(text);
++			listItem.appendChild(linkEl);
++			return listItem;
++		}
++
++		function appendChildren(item, idChildren) {
++			const childList = document.createElement('ul');
++			for (const ch of idChildren) {
++				const framePath = new URL(ch.title);
++				const innerTitle = `${framePath.hostname}${framePath.pathname}`;
++				const itemChild = makeLink(ch, innerTitle);
++				childList.appendChild(itemChild);
++			}
++			item.appendChild(childList);
++		}
++
++		function appendItem(data) {
++			const { title, devtoolsFrontendUrl, id, parentId, type, url } = data;
++			if (type !== 'page') return;
++			const item = makeLink(data, title);
++
++			if (children[id].length) appendChildren(item, children[id]);
++			document.getElementById('items').appendChild(item);
++		}
++	</script>
+ </head>
+-<body onload='onLoad()'>
+-  <div id='caption'>Inspectable WebContents</div>
+-  <div id='items'></div>
++
++<body onload="onLoad()">
++	<h3 id="heading">
++		<span id="version"></span>
++		<span>Inspectable Browser Sources & Docks</span>
++		<button id="refresh" onclick="onLoad()" type="button">&#10227; Refresh</button>
++	</h3>
++	<ul id="items">
++
++	</ul>
+ </body>
+-</html>
++
++</html>
+\ No newline at end of file

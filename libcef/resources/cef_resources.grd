@@ -10,6 +10,7 @@
   <release seq="1">
     <includes>
       <include name="IDR_CEF_LICENSE_TXT" file="..\..\LICENSE.txt" type="BINDATA" />
+      <include name="IDR_CONTENT_SHELL_DEVTOOLS_DISCOVERY_PAGE" file="${target_gen_dir}/shell_devtools_discovery_page.html" use_base_dir="false" type="BINDATA" />
     </includes>
   </release>
 </grit>

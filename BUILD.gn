@@ -1424,7 +1424,15 @@ grit("cef_resources") {
   grit_flags = [
     "-E",
     "root_gen_dir=" + rebase_path(root_gen_dir, root_build_dir),
+    "-E",
+    "target_gen_dir=" + rebase_path(target_gen_dir, root_build_dir),
   ]
+  deps = [ ":copy_shell_devtools_discovery_page" ]
+}
+
+copy("copy_shell_devtools_discovery_page") {
+  sources = [ "//content/shell/resources/shell_devtools_discovery_page.html" ]
+  outputs = [ "$target_gen_dir/shell_devtools_discovery_page.html" ]
 }
 
 # Helper for generating pack header files.
