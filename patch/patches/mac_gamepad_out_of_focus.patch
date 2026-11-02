@@ -1,0 +1,25 @@
+diff --git device/gamepad/game_controller_data_fetcher_mac.mm device/gamepad/game_controller_data_fetcher_mac.mm
+index 85d92bce2d9009f156d7c1223b368c93627f7cdf..e29de45beb1bcfc7d39b226120e5a54a9c44a1cd 100644
+--- device/gamepad/game_controller_data_fetcher_mac.mm
++++ device/gamepad/game_controller_data_fetcher_mac.mm
+@@ -240,6 +240,11 @@ void GameControllerDataFetcherMac::GameControllerDataFetcherMacImpl::
+     RegisterOnMainThread(
+         base::WeakPtr<GameControllerDataFetcherMacImpl> impl,
+         scoped_refptr<base::SingleThreadTaskRunner> polling_task_runner) {
++  // Enable background event monitoring so that controllers are detected when
++  // Chrome is running as a background application (e.g., when an installed PWA
++  // App Shim is the active foreground application).
++  GCController.shouldMonitorBackgroundEvents = YES;
++
+   GameControllerNotificationHandler* handler =
+       [[GameControllerNotificationHandler alloc]
+           initWithImpl:impl
+@@ -273,6 +278,8 @@ void GameControllerDataFetcherMac::GameControllerDataFetcherMacImpl::
+ void GameControllerDataFetcherMac::GameControllerDataFetcherMacImpl::
+     UnregisterOnMainThread(GameControllerNotificationHandler* handler) {
+   [[NSNotificationCenter defaultCenter] removeObserver:handler];
++
++  GCController.shouldMonitorBackgroundEvents = NO;
+ }
+ 
+ GameControllerDataFetcherMac::GameControllerDataFetcherMac()
