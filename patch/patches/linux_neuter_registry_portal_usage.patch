@@ -1,0 +1,66 @@
+diff --git components/dbus/xdg/portal.cc components/dbus/xdg/portal.cc
+index 37e4414643..d6ae01096f 100644
+--- components/dbus/xdg/portal.cc
++++ components/dbus/xdg/portal.cc
+@@ -84,46 +84,6 @@ class PortalRegistrar {
+       return;
+     }
+ 
+-    // If running under Flatpak or Snap, or unit started successfully, then no
+-    // need to register.
+-    if (systemd_unit_status_ ==
+-            internal::SystemdUnitStatus::kUnitNotNecessary ||
+-        systemd_unit_status_ == internal::SystemdUnitStatus::kUnitStarted) {
+-      GetVersion();
+-      return;
+-    }
+-
+-    Register();
+-
+-    // Listen for NameOwnerChanged to re-register if needed.
+-    dbus::ObjectProxy* proxy = bus_->GetObjectProxy(
+-        kPortalServiceName, dbus::ObjectPath(kPortalObjectPath));
+-    proxy->SetNameOwnerChangedCallback(base::BindRepeating(
+-        &PortalRegistrar::OnNameOwnerChanged, weak_ptr_factory_.GetWeakPtr()));
+-  }
+-
+-  void Register() {
+-    auto env = base::Environment::Create();
+-    std::string app_name = version_info::nix::GetAppName(*env);
+-
+-    dbus::ObjectProxy* proxy = bus_->GetObjectProxy(
+-        kPortalServiceName, dbus::ObjectPath(kPortalObjectPath));
+-
+-    std::map<std::string, dbus_utils::Variant> options;
+-
+-    dbus_utils::CallMethod<"sa{sv}", "">(
+-        proxy, kRegistryInterface, kMethodRegister,
+-        base::BindOnce(&PortalRegistrar::OnRegisterResponse,
+-                       weak_ptr_factory_.GetWeakPtr()),
+-        app_name, options);
+-  }
+-
+-  void OnRegisterResponse(dbus_utils::CallMethodResult<> result) {
+-    if (!result.has_value()) {
+-      // Failing to register is not an error as long as the portal is available.
+-      LOG(WARNING) << "Failed to register with " << kRegistryInterface;
+-    }
+-
+     GetVersion();
+   }
+ 
+@@ -155,14 +115,6 @@ class PortalRegistrar {
+     SetStateAndRunCallbacks(PortalRegistrarState::kSuccess);
+   }
+ 
+-  void OnNameOwnerChanged(const std::string& old_owner,
+-                          const std::string& new_owner) {
+-    if (!new_owner.empty()) {
+-      // Service restarted or appeared. Re-register.
+-      Register();
+-    }
+-  }
+-
+   void SetStateAndRunCallbacks(PortalRegistrarState state) {
+     state_ = state;
+     uint32_t version =
