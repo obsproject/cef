@@ -1,0 +1,93 @@
+diff --git build/config/sysroot.gni build/config/sysroot.gni
+index e7aaa18479d47958d6407f4d22bbe7ea939e1f92..aa3a077a2b90ffd1275a27cb5f333a2a8494c785 100644
+--- build/config/sysroot.gni
++++ build/config/sysroot.gni
+@@ -33,7 +33,7 @@ if (sysroot == "") {
+     # By default build against a sysroot image downloaded from Cloud Storage
+     # during gclient runhooks.
+     if (current_cpu == "x64") {
+-      sysroot = "$target_sysroot_dir/debian_bullseye_amd64-sysroot"
++      sysroot = "$target_sysroot_dir/debian_trixie_amd64-sysroot"
+     } else if (current_cpu == "x86") {
+       sysroot = "$target_sysroot_dir/debian_bullseye_i386-sysroot"
+     } else if (current_cpu == "mipsel") {
+@@ -43,7 +43,7 @@ if (sysroot == "") {
+     } else if (current_cpu == "arm") {
+       sysroot = "$target_sysroot_dir/debian_bullseye_armhf-sysroot"
+     } else if (current_cpu == "arm64") {
+-      sysroot = "$target_sysroot_dir/debian_bullseye_arm64-sysroot"
++      sysroot = "$target_sysroot_dir/debian_trixie_arm64-sysroot"
+     } else if (current_cpu == "riscv64") {
+       sysroot = "$target_sysroot_dir/debian_trixie_riscv64-sysroot"
+     } else {
+diff --git build/linux/sysroot_scripts/reversion_glibc.py build/linux/sysroot_scripts/reversion_glibc.py
+index e7bfa3eff0130ca20a5c1b210dfc6b360185cd53..2cec99bfbb05378137365087659674c405aa3595 100644
+--- build/linux/sysroot_scripts/reversion_glibc.py
++++ build/linux/sysroot_scripts/reversion_glibc.py
+@@ -12,6 +12,8 @@ import subprocess
+ # //chrome/installer/linux/rpm/dist_package_provides.json
+ MAX_ALLOWED_GLIBC_VERSION = [2, 26]
+ MAX_ALLOWED_GLIBC_VERSION_ARCH = {
++    "amd64": [2, 33],
++    "arm64": [2, 33],
+     "riscv64": [2, 33],
+ }
+ 
+diff --git build/linux/sysroot_scripts/sysroot_creator.py build/linux/sysroot_scripts/sysroot_creator.py
+index 2d120b42707f6772b20b06938a09def4f822346b..428b48489cf81ffe4174353a87b238385a45cad2 100755
+--- build/linux/sysroot_scripts/sysroot_creator.py
++++ build/linux/sysroot_scripts/sysroot_creator.py
+@@ -22,10 +22,10 @@ import reversion_glibc
+ 
+ DISTRO = "debian"
+ RELEASES = {
+-    "amd64": "bullseye",
++    "amd64": "trixie",
+     "i386": "bullseye",
+     "armhf": "bullseye",
+-    "arm64": "bullseye",
++    "arm64": "trixie",
+     "mipsel": "bullseye",
+     "mips64el": "bullseye",
+     "ppc64el": "bullseye",
+@@ -63,12 +63,17 @@ APT_SOURCES_LIST = [
+     ("bullseye-updates", ["main", "contrib", "non-free"]),
+     ("bullseye-backports", ["main", "contrib", "non-free"]),
+ ]
++APT_SOURCES_LIST_TRIXIE = [
++    ("trixie", ["main", "contrib", "non-free"]),
++    ("trixie-updates", ["main", "contrib", "non-free"]),
++    ("trixie-backports", ["main", "contrib", "non-free"]),
++]
+ APT_SOURCES_LIST_RISCV = [("trixie", ["main", "contrib"])]
+ APT_SOURCES_LISTS = {
+-    "amd64": APT_SOURCES_LIST,
++    "amd64": APT_SOURCES_LIST_TRIXIE,
+     "i386": APT_SOURCES_LIST,
+     "armhf": APT_SOURCES_LIST,
+-    "arm64": APT_SOURCES_LIST,
++    "arm64": APT_SOURCES_LIST_TRIXIE,
+     "mipsel": APT_SOURCES_LIST,
+     "mips64el": APT_SOURCES_LIST,
+     "ppc64el": APT_SOURCES_LIST,
+@@ -409,7 +414,10 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
+     # __GLIBC_MINOR__ is used as a feature test macro. Replace it with the
+     # earliest supported version of glibc (2.26).
+     features_h = os.path.join(install_root, "usr", "include", "features.h")
+-    replace_in_file(features_h, r"(#define\s+__GLIBC_MINOR__)", r"\1 26 //")
++    glibc_minor = r"\1 26 //"
++    if arch in ["amd64", "arm64"]:
++        glibc_minor = r"\1 33 //"
++    replace_in_file(features_h, r"(#define\s+__GLIBC_MINOR__)", glibc_minor)
+ 
+     # C23 STRTOL requires glibc >= 2.38
+     replace_in_file(features_h, r"(#\s?define\s+__GLIBC_USE_C23_STRTOL)",
+@@ -508,7 +516,7 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
+ def create_extra_symlinks(install_root: str, arch: str):
+     if RELEASES[arch] != "bullseye":
+         # Recent debian releases no longer symlink lib{dl,pthread,rt}.so
+-        for lib in ["libdl.so.2", "librt.so.1", "libpthread.so.0"]:
++        for lib in ["libdl.so.2", "librt.so.1", "libpthread.so.0", "libutil.so.1"]:
+             os.symlink(
+                 lib,
+                 os.path.join(install_root, "lib", TRIPLES[arch],

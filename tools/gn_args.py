@@ -628,13 +628,12 @@ def LinuxSysrootExists(cpu):
   sysroot_root = os.path.join(src_dir, 'build', 'linux')
   # CPU-specific sysroot directory names.
   # Should match the values in build/config/sysroot.gni.
-  release = 'bullseye'
   if cpu == 'x64':
-    sysroot_name = 'debian_%s_amd64-sysroot' % release
+    sysroot_name = 'debian_trixie_amd64-sysroot'
   elif cpu == 'arm':
-    sysroot_name = 'debian_%s_armhf-sysroot' % release
+    sysroot_name = 'debian_bullseye_armhf-sysroot'
   elif cpu == 'arm64':
-    sysroot_name = 'debian_%s_arm64-sysroot' % release
+    sysroot_name = 'debian_trixie_arm64-sysroot'
   else:
     raise Exception('Unrecognized sysroot CPU: %s' % cpu)
 

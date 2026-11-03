@@ -42,11 +42,30 @@ if platform == 'linux' and 'CEF_INSTALL_SYSROOT' in os.environ:
     if len(arch) == 0:
       continue
     print("\nInstalling %s sysroot environment..." % arch)
-    cmd = [
-        sys.executable, 'build/linux/sysroot_scripts/install-sysroot.py',
-        '--arch', arch
-    ]
-    RunAction(src_dir, cmd)
+    if arch in ["amd64", "arm64"]:
+        prefix = 'debian_trixie_%s' % arch
+        tarball = os.path.join(
+            src_dir, 'out', 'sysroot-build', 'trixie', '%s_sysroot.tar.xz' % prefix
+        )
+        sysroot = os.path.join(src_dir, 'build', 'linux', '%s-sysroot' % prefix)
+        stamp = os.path.join(sysroot, '.stamp')
+        cmd = [
+            sys.executable, 'build/linux/sysroot_scripts/sysroot_creator.py',
+            'build', arch
+        ]
+        if not os.path.exists(stamp):
+            if not os.path.exists(tarball):
+                RunAction(src_dir, cmd)
+            os.mkdir(sysroot)
+            RunAction(src_dir, ['tar', 'mxf', tarball, '-C', sysroot])
+            with open(stamp, 'w') as s:
+                s.write('file://%s' % tarball)
+    else:
+        cmd = [
+            sys.executable, 'build/linux/sysroot_scripts/install-sysroot.py',
+            '--arch', arch
+        ]
+        RunAction(src_dir, cmd)
 
 print("\nGenerating CEF project files...")
 
