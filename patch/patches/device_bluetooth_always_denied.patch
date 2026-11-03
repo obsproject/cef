@@ -1,0 +1,50 @@
+diff --git device/bluetooth/android/java/src/org/chromium/device/bluetooth/ChromeBluetoothAdapter.java device/bluetooth/android/java/src/org/chromium/device/bluetooth/ChromeBluetoothAdapter.java
+index 3e3878f2af07831576919a3b1609b72a812fe16a..e2ff040b2ff6a981bcfd5ee665dc520d36d2f704 100644
+--- device/bluetooth/android/java/src/org/chromium/device/bluetooth/ChromeBluetoothAdapter.java
++++ device/bluetooth/android/java/src/org/chromium/device/bluetooth/ChromeBluetoothAdapter.java
+@@ -163,12 +163,6 @@ final class ChromeBluetoothAdapter extends BroadcastReceiver {
+     // code takes care of it.
+     @CalledByNative
+     private int getOsPermissionStatus() {
+-        if (!isPresent()) {
+-            return PermissionStatus.DENIED;
+-        }
+-        if (hasPermissionToScan()) {
+-            return PermissionStatus.ALLOWED;
+-        }
+         return PermissionStatus.DENIED;
+     }
+ 
+diff --git device/bluetooth/bluetooth_adapter.cc device/bluetooth/bluetooth_adapter.cc
+index f1317d5b64d24e2ea10273c96b50fbd65a7e235c..70c940d192de5df860f3d6007389e56efe85b2aa 100644
+--- device/bluetooth/bluetooth_adapter.cc
++++ device/bluetooth/bluetooth_adapter.cc
+@@ -77,10 +77,7 @@ bool BluetoothAdapter::CanPower() const {
+ 
+ BluetoothAdapter::PermissionStatus BluetoothAdapter::GetOsPermissionStatus()
+     const {
+-  // If this is not overridden that means OS permission is not
+-  // required on this platform so act as though we already have
+-  // permission.
+-  return PermissionStatus::kAllowed;
++  return PermissionStatus::kDenied;
+ }
+ 
+ void BluetoothAdapter::RequestSystemPermission(
+diff --git device/bluetooth/bluetooth_adapter_factory.cc device/bluetooth/bluetooth_adapter_factory.cc
+index c7743dc901097253aff06e398b13b190d85fe7b6..1976ffa0d0aedc1f686204260e55c925fceaba49 100644
+--- device/bluetooth/bluetooth_adapter_factory.cc
++++ device/bluetooth/bluetooth_adapter_factory.cc
+@@ -60,11 +60,7 @@ bool BluetoothAdapterFactory::IsBluetoothSupported() {
+ // static
+ BluetoothAdapter::PermissionStatus
+ BluetoothAdapterFactory::GetOsPermissionStatus() {
+-#if BUILDFLAG(IS_MAC)
+-  return GetMacBluetoothPermissionStatus();
+-#else
+-  return BluetoothAdapter::PermissionStatus::kAllowed;
+-#endif
++  return BluetoothAdapter::PermissionStatus::kDenied;
+ }
+ 
+ bool BluetoothAdapterFactory::IsLowEnergySupported() {
