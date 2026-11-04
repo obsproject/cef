@@ -1,0 +1,21 @@
+diff --git device/gamepad/gamepad_platform_data_fetcher.h device/gamepad/gamepad_platform_data_fetcher.h
+index 169a7d39938724b832606424dc1d70f41ea232fa..2dd5d975b4b4e684f73033bfb448ba495add7d9e 100644
+--- device/gamepad/gamepad_platform_data_fetcher.h
++++ device/gamepad/gamepad_platform_data_fetcher.h
+@@ -23,6 +23,7 @@
+ #include "device/gamepad/nintendo_data_fetcher.h"
+ #include "device/gamepad/raw_input_data_fetcher_win.h"
+ #include "device/gamepad/wgi_data_fetcher_win.h"
++#include "device/gamepad/xinput_data_fetcher_win.h"
+ #elif BUILDFLAG(IS_APPLE)
+ #include "device/gamepad/game_controller_data_fetcher_mac.h"
+ #if BUILDFLAG(IS_MAC)
+@@ -48,7 +49,7 @@ void AddGamepadPlatformDataFetchers(GamepadDataFetcherManager* manager) {
+           features::kEnableWindowsGameInputDataFetcher)) {
+     manager->AddFactory(new GameInputDataFetcher::Factory());
+   } else {
+-    manager->AddFactory(new WgiDataFetcherWin::Factory());
++    manager->AddFactory(new XInputDataFetcherWin::Factory());
+   }
+   manager->AddFactory(new NintendoDataFetcher::Factory());
+   manager->AddFactory(new RawInputDataFetcher::Factory());
