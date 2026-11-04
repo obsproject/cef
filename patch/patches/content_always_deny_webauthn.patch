@@ -1,0 +1,61 @@
+diff --git content/browser/webauth/authenticator_common_impl.cc content/browser/webauth/authenticator_common_impl.cc
+index 8247121b27f8acf3d3336cc09992549ce5c92411..e0e71da0f6deff7fd5ecea9a6f5de6dad794d3af 100644
+--- content/browser/webauth/authenticator_common_impl.cc
++++ content/browser/webauth/authenticator_common_impl.cc
+@@ -41,6 +41,7 @@
+ #include "base/time/time.h"
+ #include "base/timer/timer.h"
+ #include "build/build_config.h"
++#include "cef/libcef/features/features.h"
+ #include "components/device_event_log/device_event_log.h"
+ #include "components/webauthn/core/browser/common_utils.h"
+ #include "components/webauthn/core/browser/remote_validation.h"
+@@ -1067,6 +1068,11 @@ void AuthenticatorCommonImpl::MakeCredential(
+ 
+   BeginRequestTimeout(options->timeout);
+ 
++#if BUILDFLAG(ENABLE_CEF)
++  req_state_->request_outcome = MakeCredentialOutcome::kSecurityError;
++  CompleteMakeCredentialRequest(
++      blink::mojom::AuthenticatorStatus::NOT_ALLOWED_ERROR);
++#else
+   WebAuthRequestSecurityChecker::RequestType request_type =
+       options->is_payment_credential_creation
+           ? WebAuthRequestSecurityChecker::RequestType::kMakePaymentCredential
+@@ -1126,6 +1132,7 @@ void AuthenticatorCommonImpl::MakeCredential(
+   if (remote_validation) {
+     req_state_->remote_rp_id_validation = std::move(remote_validation);
+   }
++#endif
+ }
+ 
+ void AuthenticatorCommonImpl::ContinueMakeCredentialAfterRpIdCheck(
+@@ -1439,7 +1446,7 @@ void AuthenticatorCommonImpl::GetCredential(
+   } else if (options->mediation == Mediation::IMMEDIATE) {
+     base::RecordAction(base::UserMetricsAction("WebAuthn.GetCredential.Start"));
+   }
+-  blink::mojom::PublicKeyCredentialRequestOptions* public_key_options =
++  [[maybe_unused]] blink::mojom::PublicKeyCredentialRequestOptions* public_key_options =
+       options->public_key.get();
+   callback = base::BindOnce(
+       &AuthenticatorCommonImpl::GetMetricsWrappedGetCredentialCallback,
+@@ -1451,6 +1458,11 @@ void AuthenticatorCommonImpl::GetCredential(
+     return;
+   }
+ 
++#if BUILDFLAG(ENABLE_CEF)
++  std::move(callback).Run(AuthenticatorImpl::MakeGetAssertionResponse(
++      blink::mojom::AuthenticatorStatus::NOT_ALLOWED_ERROR, nullptr,
++      nullptr));
++#else
+   if (!public_key_options) {
+     if (!options->password) {
+       mojo::ReportBadMessage("At least one credential type must be requested.");
+@@ -1590,6 +1602,7 @@ void AuthenticatorCommonImpl::GetCredential(
+   if (remote_validation) {
+     req_state_->remote_rp_id_validation = std::move(remote_validation);
+   }
++#endif
+ }
+ 
+ void AuthenticatorCommonImpl::GetPasswordOnlyCredential(
